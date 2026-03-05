@@ -1,0 +1,58 @@
+services:
+  nextjs:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_ODOO_URL=http://odoo:8069
+      - NODE_ENV=production
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - '-q'
+        - '--spider'
+        - 'http://localhost:3000'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  odoo:
+    image: 'odoo:18'
+    environment:
+      - SERVICE_URL_ODOO_8069
+      - HOST=postgresql
+      - USER=$SERVICE_USER_POSTGRES
+      - PASSWORD=$SERVICE_PASSWORD_POSTGRES
+      - ADDONS_PATH=/mnt/extra-addons,/mnt/extra-addons/trace_crown
+    volumes:
+      - 'odoo-web-data:/var/lib/odoo'
+      - 'odoo-extra-addons:/mnt/extra-addons'
+      - ./odoo:/mnt/extra-addons/trace_crown
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - '-f'
+        - 'http://127.0.0.1:8069'
+      interval: 2s
+      timeout: 10s
+      retries: 30
+  postgresql:
+    image: 'postgres:16-alpine'
+    volumes:
+      - 'postgresql-data:/var/lib/postgresql/data'
+    environment:
+      - POSTGRES_USER=$SERVICE_USER_POSTGRES
+      - POSTGRES_PASSWORD=$SERVICE_PASSWORD_POSTGRES
+      - POSTGRES_DB=postgres
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'pg_isready -U $${POSTGRES_USER} -d postgres'
+      interval: 5s
+      timeout: 20s
+      retries: 10
+
+volumes:
+  nextjs-node-modules:
