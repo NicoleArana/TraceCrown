@@ -9,15 +9,33 @@ const odoo = new Odoo({
 
 export async function GET() {
   try {
-    await odoo.connect();
+    await odoo.connect(); //wait response to conection
 
     const users = await odoo.searchRead('res.users', [], ['id', 'login', 'name', 'email'], {
       limit: 10,
-    });
+    }); //Json w/ the request (all the users in the db)
 
-    return Response.json({ success: true, users });
+    return Response.json({ success: true, users }); //response
   } catch (error) {
-    console.error('Odoo error:', error);
+    console.error('Odoo error:', error); //showing errors in the server
     return Response.json({ success: false, error: String(error) }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try{
+     const body = await req.json();
+
+    console.log("Odoo event received:", body);
+
+    if (body.secret !== process.env.ODOO_SECRET) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    return new Response("OK", { status: 200 });
+
+  }catch (error) {
+    console.error(error);
+    return new Response("Error", { status: 500 });
   }
 }
