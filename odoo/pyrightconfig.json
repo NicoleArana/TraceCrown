@@ -1,0 +1,5 @@
+{
+  "venvPath": "${workspaceFolder}/odoo",
+  "pythonVersion": "3.12",
+  "extraPaths": ["${workspaceFolder}/odoo"]
+}

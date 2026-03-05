@@ -1,0 +1,2 @@
+odoo-py==0.0.18
+requests
