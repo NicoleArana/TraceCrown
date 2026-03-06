@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_whatsapp_session_tree" model="ir.ui.view">
+        <field name="name">whatsapp.session.tree</field>
+        <field name="model">whatsapp.session</field>
+        <field name="arch" type="xml">
+            <tree string="WhatsApp Sessions">
+                <field name="phone_number"/>
+                <field name="state"/>
+                <field name="first_message_received"/>
+                <field name="last_interaction"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_whatsapp_session_form" model="ir.ui.view">
+        <field name="name">whatsapp.session.form</field>
+        <field name="model">whatsapp.session</field>
+        <field name="arch" type="xml">
+            <form string="WhatsApp Session">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="phone_number"/>
+                            <field name="state"/>
+                            <field name="first_message_received"/>
+                            <field name="last_interaction"/>
+                        </group>
+                        <group>
+                            <field name="session_data"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_whatsapp_session_search" model="ir.ui.view">
+        <field name="name">whatsapp.session.search</field>
+        <field name="model">whatsapp.session</field>
+        <field name="arch" type="xml">
+            <search string="Search WhatsApp Sessions">
+                <field name="phone_number"/>
+                <field name="state"/>
+                <field name="first_message_received"/>
+                <filter name="state_new" string="New" domain="[('state', '=', 'new')]"/>
+                <filter name="state_menu" string="Menu" domain="[('state', '=', 'menu')]"/>
+                <filter name="state_product" string="Creating Product" domain="[('state', '=', 'creating_product')]"/>
+                <filter name="state_order" string="Creating Order" domain="[('state', '=', 'creating_order')]"/>
+                <filter name="state_auditing" string="Auditing" domain="[('state', '=', 'auditing')]"/>
+                <filter name="first_message" string="Welcomed" domain="[('first_message_received', '=', True)]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_by_state" string="State" context="{'group_by': 'state'}"/>
+                    <filter name="group_by_phone" string="Phone" context="{'group_by': 'phone_number'}"/>
+                    <filter name="group_by_date" string="Last Interaction" context="{'group_by': 'last_interaction:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_whatsapp_sessions" model="ir.actions.act_window">
+        <field name="name">WhatsApp Sessions</field>
+        <field name="res_model">whatsapp.session</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_whatsapp_session_search"/>
+    </record>
+
+    <menuitem
+        id="menu_whatsapp_sessions"
+        name="WhatsApp Sessions"
+        parent="stock.menu_stock_root"
+        action="action_whatsapp_sessions"
+        sequence="95"
+    />
+</odoo>

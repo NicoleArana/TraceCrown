@@ -7,7 +7,10 @@
     "website": "",
     "license": "LGPL-3",
     "depends": ["stock"],
-    "data": ["security/ir.model.access.csv"],
+    "data": [
+        "security/ir.model.access.csv",
+        "views/whatsapp_session_views.xml",
+    ],
     "application": True,
     "auto_install": False,
 }
