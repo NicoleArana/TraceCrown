@@ -4,7 +4,7 @@ import { connectOdoo } from "@/src/odoo/client";
 export interface WhatsAppSession {
   id: number;
   phone_number: string;
-  state: "new" | "menu" | "creating_product" | "creating_order" | "auditing";
+  state: "new" | "menu" | "creating_product" | "creating_order" | "auditing" | "awaiting_audit_count" | "audit_count_confirm";
   session_data: Record<string, unknown>;
   first_message_received: boolean;
   last_interaction: string;

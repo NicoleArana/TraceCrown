@@ -18,7 +18,23 @@ export const MENU_OPTIONS = {
   START_AUDIT: "start_audit",
   CREATE_PRODUCT: "create_product",
   CREATE_ORDER: "create_order",
+  CONFIRM_AUDIT: "confirm_audit",
+  CORRECT_AUDIT: "correct_audit",
 } as const;
+
+// Audit flow messages
+export const AUDIT_DETAILS_MESSAGE =
+  "📋 *Detalles de Auditoría*\n\n" +
+  "📍 *Ubicación:* Bodega A\n" +
+  "📦 *Producto:* Caja de guantes M\n" +
+  "🔢 *Cantidad esperada:* 100 unidades";
+
+export const COUNT_INPUT_MESSAGE =
+  "Por favor, ingresa el conteo del producto:";
+
+export function getAuditConfirmationMessage(count: string): string {
+  return `El conteo registrado es: *${count}*`;
+}
 
 /**
  * Get the main menu with interactive buttons
@@ -52,6 +68,38 @@ export function getMainMenuButtons() {
           reply: {
             id: MENU_OPTIONS.CREATE_ORDER,
             title: "Crear pedido",
+          },
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Get audit confirmation buttons (Confirmar/Corregir)
+ * 
+ * @returns Interactive button message configuration
+ */
+export function getAuditConfirmButtons() {
+  return {
+    type: "button" as const,
+    body: {
+      text: "¿Confirmas el conteo ingresado?",
+    },
+    action: {
+      buttons: [
+        {
+          type: "reply" as const,
+          reply: {
+            id: MENU_OPTIONS.CONFIRM_AUDIT,
+            title: "Confirmar",
+          },
+        },
+        {
+          type: "reply" as const,
+          reply: {
+            id: MENU_OPTIONS.CORRECT_AUDIT,
+            title: "Corregir",
           },
         },
       ],
