@@ -7,7 +7,7 @@
     "website": "",
     "license": "LGPL-3",
     "depends": ["stock"],
-    "data": [],
+    "data": ["security/ir.model.access.csv"],
     "application": True,
     "auto_install": False,
 }
