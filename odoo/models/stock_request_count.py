@@ -3,7 +3,7 @@ import requests
 import threading
 
 
-class StockRequestCount(models.Model):
+class StockRequestCount(models.TransientModel):
     _inherit = "stock.request.count"
 
     _ASSIGNEE_FIELDS = (
