@@ -21,10 +21,11 @@ async function getUserSession(phoneNumber: string): Promise<WhatsAppSession | nu
     const odoo = await connectOdoo();
 
     // Call Odoo method to get or create session
+    // Note: execute_kw expects [args] where args is the list of arguments to pass to the method
     const sessionId = await odoo.execute_kw(
       "whatsapp.session",
       "get_or_create_session",
-      [phoneNumber]
+      [[phoneNumber]]
     );
 
     // Read the session data

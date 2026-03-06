@@ -10,6 +10,9 @@ export const ERROR_MESSAGE = "Algo salió mal. Por favor intenta de nuevo.";
 
 export const PLACEHOLDER_MESSAGE = "Esta función estará disponible pronto.";
 
+export const UNAUTHORIZED_MESSAGE =
+  "Lo sentimos, no tienes autorización para usar este bot. Por favor contacta al administrador.";
+
 // Menu option identifiers
 export const MENU_OPTIONS = {
   START_AUDIT: "start_audit",
@@ -89,4 +92,13 @@ export function getWelcomeMessage(): string {
  */
 export function getErrorMessage(): string {
   return ERROR_MESSAGE;
+}
+
+/**
+ * Get unauthorized user message
+ * 
+ * @returns Unauthorized message string
+ */
+export function getUnauthorizedMessage(): string {
+  return UNAUTHORIZED_MESSAGE;
 }

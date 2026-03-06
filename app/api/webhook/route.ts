@@ -10,8 +10,10 @@ import {
   getMainMenuButtons,
   getPlaceholderResponse,
   getErrorMessage,
+  getUnauthorizedMessage,
   MENU_OPTIONS,
 } from "../../lib/whatsapp-templates";
+import { getUserByPhone } from "../odoo/user/[phone]/get-user-by-phone";
 
 function createWhatsappClient() {
   return new WhatsAppClient({
@@ -21,6 +23,8 @@ function createWhatsappClient() {
 }
 
 export async function POST(req: Request) {
+  let phoneNumber: string | undefined;
+  
   try {
     const { event, data } = await req.json();
 
@@ -28,7 +32,7 @@ export async function POST(req: Request) {
     console.log("Data:", JSON.stringify(data, null, 2));
 
     // Extract phone number from incoming message
-    const phoneNumber = data[0]?.message?.from;
+    phoneNumber = data[0]?.message?.from;
     if (!phoneNumber) {
       console.error("No phone number found in webhook data");
       return new Response("OK", { status: 200 });
@@ -36,6 +40,22 @@ export async function POST(req: Request) {
 
     const client = createWhatsappClient();
     const phoneNumberId = process.env.PHONE_NUMBER_ID!;
+
+    // Verify user exists in Odoo
+    console.log("Verifying user in Odoo...");
+    const userResponse = await getUserByPhone(phoneNumber);
+    
+    if (!userResponse.success || !userResponse.partner) {
+      console.log(`User not found in Odoo for phone: ${phoneNumber}`);
+      await client.messages.sendText({
+        phoneNumberId,
+        to: phoneNumber,
+        body: getUnauthorizedMessage(),
+      });
+      return new Response("OK", { status: 200 });
+    }
+
+    console.log(`User verified: ${userResponse.partner.name} (${userResponse.partner.email})`);
 
     // Get or create user session
     const session = await getOrCreateSession(phoneNumber);
@@ -139,20 +159,17 @@ export async function POST(req: Request) {
     console.error("Error handling webhook:", error);
 
     // Try to send error message to user if we have their phone number
-    try {
-      const { data } = await req.json();
-      const phoneNumber = data[0]?.message?.from;
-      
-      if (phoneNumber) {
+    if (phoneNumber) {
+      try {
         const client = createWhatsappClient();
         await client.messages.sendText({
           phoneNumberId: process.env.PHONE_NUMBER_ID!,
           to: phoneNumber,
           body: getErrorMessage(),
         });
+      } catch (sendError) {
+        console.error("Error sending error message:", sendError);
       }
-    } catch (sendError) {
-      console.error("Error sending error message:", sendError);
     }
 
     // Always return 200 to prevent webhook retries

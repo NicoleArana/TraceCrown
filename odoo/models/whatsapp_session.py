@@ -49,7 +49,7 @@ class WhatsAppSession(models.Model):
         Get existing session or create a new one for the given phone number.
 
         :param phone_number: WhatsApp phone number
-        :return: whatsapp.session record
+        :return: session ID (int)
         """
         session = self.search([("phone_number", "=", phone_number)], limit=1)
         if not session:
@@ -64,7 +64,7 @@ class WhatsAppSession(models.Model):
         else:
             # Update last interaction timestamp
             session.write({"last_interaction": fields.Datetime.now()})
-        return session
+        return session.id
 
     def reset_session(self):
         """Reset session to menu state and clear session data."""
