@@ -11,7 +11,7 @@ export async function GET() {
   try {
     await odoo.connect();
 
-    const users = await odoo.searchRead('res.users', [], ['id', 'login', 'name', 'email'], {
+    const users = await odoo.searchRead('res.partner', undefined, ['id', 'name', 'email', 'phone', 'mobile', 'user_ids'], {
       limit: 10,
     });
 
