@@ -28,21 +28,16 @@ async function getUserSession(phoneNumber: string): Promise<WhatsAppSession | nu
     );
 
     // Read the session data
-    const sessions = await odoo.execute_kw("whatsapp.session", "read", [
-      [[sessionId]],
-      {
-        fields: [
-          "id",
-          "phone_number",
-          "state",
-          "session_data",
-          "first_message_received",
-          "last_interaction",
-        ],
-      },
+    const sessions = await odoo.read("whatsapp.session", sessionId, [
+      "id",
+      "phone_number",
+      "state",
+      "session_data",
+      "first_message_received",
+      "last_interaction",
     ]);
 
-    return sessions?.[0] || null;
+    return (sessions?.[0] as WhatsAppSession | undefined) || null;
   } catch (error) {
     console.error("Error getting user session from Odoo:", error);
     throw error;
@@ -62,17 +57,14 @@ async function updateUserSession(
   try {
     const odoo = await connectOdoo();
 
-    // Find the session by phone number
-    const sessionIds = await odoo.execute_kw("whatsapp.session", "search", [
-      [["phone_number", "=", phoneNumber]],
-    ]);
-
-    if (!sessionIds || sessionIds.length === 0) {
-      throw new Error(`Session not found for phone number: ${phoneNumber}`);
-    }
+    const sessionId = await odoo.execute_kw(
+      "whatsapp.session",
+      "get_or_create_session",
+      [[phoneNumber]]
+    );
 
     // Update the session
-    await odoo.execute_kw("whatsapp.session", "write", [[sessionIds, updates]]);
+    await odoo.update("whatsapp.session", sessionId, updates);
   } catch (error) {
     console.error("Error updating user session in Odoo:", error);
     throw error;
@@ -88,17 +80,14 @@ async function resetUserSession(phoneNumber: string): Promise<void> {
   try {
     const odoo = await connectOdoo();
 
-    // Find the session by phone number
-    const sessionIds = await odoo.execute_kw("whatsapp.session", "search", [
-      [["phone_number", "=", phoneNumber]],
-    ]);
-
-    if (!sessionIds || sessionIds.length === 0) {
-      throw new Error(`Session not found for phone number: ${phoneNumber}`);
-    }
+    const sessionId = await odoo.execute_kw(
+      "whatsapp.session",
+      "get_or_create_session",
+      [[phoneNumber]]
+    );
 
     // Call the reset_session method
-    await odoo.execute_kw("whatsapp.session", "reset_session", [[sessionIds]]);
+    await odoo.execute_kw("whatsapp.session", "reset_session", [[sessionId]]);
   } catch (error) {
     console.error("Error resetting user session in Odoo:", error);
     throw error;
