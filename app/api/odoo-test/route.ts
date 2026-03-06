@@ -22,20 +22,3 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
-  try{
-     const body = await req.json();
-
-    console.log("Odoo event received:", body);
-
-    if (body.secret !== process.env.ODOO_SECRET) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-
-    return new Response("OK", { status: 200 });
-
-  }catch (error) {
-    console.error(error);
-    return new Response("Error", { status: 500 });
-  }
-}
