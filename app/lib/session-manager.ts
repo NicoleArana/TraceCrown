@@ -21,7 +21,6 @@ async function getUserSession(phoneNumber: string): Promise<WhatsAppSession | nu
     const odoo = await connectOdoo();
 
     // Call Odoo method to get or create session
-    // Note: execute_kw expects [args] where args is the list of arguments to pass to the method
     const sessionId = await odoo.execute_kw(
       "whatsapp.session",
       "get_or_create_session",
@@ -30,15 +29,17 @@ async function getUserSession(phoneNumber: string): Promise<WhatsAppSession | nu
 
     // Read the session data
     const sessions = await odoo.execute_kw("whatsapp.session", "read", [
-      [sessionId],
-      [
-        "id",
-        "phone_number",
-        "state",
-        "session_data",
-        "first_message_received",
-        "last_interaction",
-      ],
+      [[sessionId]],
+      {
+        fields: [
+          "id",
+          "phone_number",
+          "state",
+          "session_data",
+          "first_message_received",
+          "last_interaction",
+        ],
+      },
     ]);
 
     return sessions?.[0] || null;
@@ -71,7 +72,7 @@ async function updateUserSession(
     }
 
     // Update the session
-    await odoo.execute_kw("whatsapp.session", "write", [sessionIds, updates]);
+    await odoo.execute_kw("whatsapp.session", "write", [[sessionIds, updates]]);
   } catch (error) {
     console.error("Error updating user session in Odoo:", error);
     throw error;
@@ -97,7 +98,7 @@ async function resetUserSession(phoneNumber: string): Promise<void> {
     }
 
     // Call the reset_session method
-    await odoo.execute_kw("whatsapp.session", "reset_session", [sessionIds]);
+    await odoo.execute_kw("whatsapp.session", "reset_session", [[sessionIds]]);
   } catch (error) {
     console.error("Error resetting user session in Odoo:", error);
     throw error;
