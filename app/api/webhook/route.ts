@@ -14,6 +14,7 @@ import {
   getAuditConfirmButtons,
   AUDIT_DETAILS_MESSAGE,
   COUNT_INPUT_MESSAGE,
+  COUNT_CONFIRMATION_DETAILS_MESSAGE,
   getAuditConfirmationMessage,
   MENU_OPTIONS,
 } from "../../lib/whatsapp-templates";
@@ -132,7 +133,7 @@ export async function POST(req: Request) {
           await client.messages.sendText({
             phoneNumberId,
             to: phoneNumber,
-            body: "✅ Auditoría guardada correctamente.",
+            body: COUNT_CONFIRMATION_DETAILS_MESSAGE,
           });
 
           await new Promise((resolve) => setTimeout(resolve, 500));

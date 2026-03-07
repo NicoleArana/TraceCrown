@@ -35,6 +35,12 @@ export function getAuditConfirmationMessage(count: string): string {
   return `El conteo registrado es: *${count}*`;
 }
 
+export const COUNT_CONFIRMATION_DETAILS_MESSAGE =
+  "📋 *Detalles de Auditoría*\n\n" +
+  "📍 *Ubicación:* Bodega A\n" +
+  "📦 *Producto:* Caja de guantes \n" +
+  "🔢 *Conteo registrado:* {count}\n\n" +
+  "🔢 *Conteo esperado:* {count}\n\n" ;
 /**
  * Get the main menu with interactive buttons
  * 
