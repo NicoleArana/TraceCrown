@@ -2,8 +2,15 @@ from odoo import models, api
 import requests
 import threading
 
+
 class StockQuant(models.Model):
     _inherit = "stock.quant"
+
+    @api.model
+    def trace_apply_inventory_with_history(self, quant_ids):
+        quants = self.browse(quant_ids)
+        quants.action_apply_inventory()
+        return True
 
     def write(self, vals):
         res = super(StockQuant, self).write(vals)
