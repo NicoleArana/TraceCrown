@@ -2,6 +2,8 @@
  * WhatsApp message templates for BioCRowny bot
  */
 
+import { count } from "console";
+
 // Message constants
 export const WELCOME_MESSAGE =
   "Bienvenido a BioCRowny. Este bot te ayudará a gestionar tu inventario.";
@@ -35,12 +37,15 @@ export function getAuditConfirmationMessage(count: string): string {
   return `El conteo registrado es: *${count}*`;
 }
 
-export const COUNT_CONFIRMATION_DETAILS_MESSAGE =
-  "📋 *Detalles de Auditoría*\n\n" +
-  "📍 *Ubicación:* Bodega A\n" +
-  "📦 *Producto:* Caja de guantes \n" +
-  "🔢 *Conteo registrado:* {count}\n" +
-  "🔢 *Conteo esperado:* {count}\n\n" ;
+export function getCountConfirmationDetails(registeredCount: string, expectedCount: string): string {
+  return (
+    "📋 *Detalles de Auditoría*\n\n" +
+    "📍 *Ubicación:* Bodega A\n" +
+    "📦 *Producto:* Caja de guantes \n" +
+    `🔢 *Conteo registrado:* *${registeredCount}*\n` +
+    `🔢 *Conteo esperado:* *${expectedCount}*\n\n`
+  );
+}
 /**
  * Get the main menu with interactive buttons
  * 

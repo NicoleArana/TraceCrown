@@ -14,9 +14,9 @@ import {
   getAuditConfirmButtons,
   AUDIT_DETAILS_MESSAGE,
   COUNT_INPUT_MESSAGE,
-  COUNT_CONFIRMATION_DETAILS_MESSAGE,
   getAuditConfirmationMessage,
   MENU_OPTIONS,
+  getCountConfirmationDetails,
 } from "../../lib/whatsapp-templates";
 import { getUserByPhone } from "../odoo/user/[phone]/get-user-by-phone";
 
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
           await client.messages.sendText({
             phoneNumberId,
             to: phoneNumber,
-            body: COUNT_CONFIRMATION_DETAILS_MESSAGE,
+            body: getCountConfirmationDetails(session.session_data.audit_count as string || "N/A", "hardcoded_expected_count"),
           });
 
           await new Promise((resolve) => setTimeout(resolve, 500));
