@@ -48,6 +48,7 @@
                 <filter name="state_product" string="Creating Product" domain="[('state', '=', 'creating_product')]"/>
                 <filter name="state_order" string="Creating Order" domain="[('state', '=', 'creating_order')]"/>
                 <filter name="state_auditing" string="Auditing" domain="[('state', '=', 'auditing')]"/>
+                <filter name="state_awaiting_selection" string="Awaiting Selection" domain="[('state', '=', 'awaiting_audit_selection')]"/>
                 <filter name="state_awaiting_count" string="Awaiting Count" domain="[('state', '=', 'awaiting_audit_count')]"/>
                 <filter name="state_count_confirm" string="Count Confirm" domain="[('state', '=', 'audit_count_confirm')]"/>
                 <filter name="first_message" string="Welcomed" domain="[('first_message_received', '=', True)]"/>

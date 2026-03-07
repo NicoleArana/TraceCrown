@@ -1,7 +1,6 @@
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
   getOrCreateSession,
-  isFirstMessage,
   markFirstMessageReceived,
   setSessionState,
 } from "../../lib/session-manager";
@@ -12,13 +11,85 @@ import {
   getErrorMessage,
   getUnauthorizedMessage,
   getAuditConfirmButtons,
-  AUDIT_DETAILS_MESSAGE,
   COUNT_INPUT_MESSAGE,
   getAuditConfirmationMessage,
   MENU_OPTIONS,
   getCountConfirmationDetails,
 } from "../../lib/whatsapp-templates";
 import { getUserByPhone } from "../odoo/user/[phone]/get-user-by-phone";
+import { getInventoryRecountByPhone } from "../odoo/inventory-recount/[phone]/get-user-by-phone";
+
+type RecountRequestOption = {
+  id: number;
+  name?: string;
+  display_name?: string;
+  state?: string;
+  product_name?: string;
+  location_name?: string;
+  expected_qty?: number;
+  [key: string]: unknown;
+};
+
+function getMany2oneName(value: unknown): string | null {
+  if (Array.isArray(value) && value.length > 1 && typeof value[1] === "string") {
+    return value[1];
+  }
+  return null;
+}
+
+function getRequestDisplayName(request: RecountRequestOption): string {
+  return request.display_name || request.name || `Solicitud #${request.id}`;
+}
+
+function getRequestProduct(request: RecountRequestOption): string {
+  const fromMany2one = getMany2oneName(request.product_id);
+  return request.product_name || fromMany2one || "No especificado";
+}
+
+function getRequestLocation(request: RecountRequestOption): string {
+  const fromMany2one = getMany2oneName(request.location_id);
+  return request.location_name || fromMany2one || "No especificada";
+}
+
+function getRequestExpectedCount(request: RecountRequestOption): string {
+  const expectedQty = request.expected_qty;
+  if (typeof expectedQty === "number") {
+    return String(expectedQty);
+  }
+
+  const inventoryQty = request.inventory_qty;
+  if (typeof inventoryQty === "number") {
+    return String(inventoryQty);
+  }
+
+  const productQty = request.product_qty;
+  if (typeof productQty === "number") {
+    return String(productQty);
+  }
+
+  return "N/A";
+}
+
+function buildAuditDetailsMessage(request: RecountRequestOption): string {
+  return (
+    "📋 *Detalles de Auditoría*\n\n" +
+    `🧾 *Solicitud:* ${getRequestDisplayName(request)}\n` +
+    `📍 *Ubicación:* ${getRequestLocation(request)}\n` +
+    `📦 *Producto:* ${getRequestProduct(request)}`
+  );
+}
+
+function getSelectionOptions(sessionData: Record<string, unknown>): RecountRequestOption[] {
+  const raw = sessionData.recount_request_options;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.filter(
+    (item): item is RecountRequestOption =>
+      typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "number"
+  );
+}
 
 function createWhatsappClient() {
   return new WhatsAppClient({
@@ -98,7 +169,14 @@ export async function POST(req: Request) {
       }
 
       // Update session state based on button selection
-      let newState: "creating_product" | "creating_order" | "auditing" | "menu" | "awaiting_audit_count" | "audit_count_confirm" = "menu";
+      let newState:
+        | "creating_product"
+        | "creating_order"
+        | "auditing"
+        | "menu"
+        | "awaiting_audit_selection"
+        | "awaiting_audit_count"
+        | "audit_count_confirm" = "menu";
 
       switch (buttonId) {
         case MENU_OPTIONS.CREATE_PRODUCT:
@@ -108,11 +186,71 @@ export async function POST(req: Request) {
           newState = "creating_order";
           break;
         case MENU_OPTIONS.START_AUDIT:
-          // Send audit details
+          const recountLookup = await getInventoryRecountByPhone(phoneNumber);
+
+          if (!recountLookup.success) {
+            await client.messages.sendText({
+              phoneNumberId,
+              to: phoneNumber,
+              body: "No se pudo obtener las solicitudes de reconteo. Intenta de nuevo en unos minutos.",
+            });
+            return new Response("OK", { status: 200 });
+          }
+
+          const recountRequests =
+            recountLookup.recountRequests && recountLookup.recountRequests.length > 0
+              ? (recountLookup.recountRequests as RecountRequestOption[])
+              : recountLookup.recountRequest
+                ? [recountLookup.recountRequest as RecountRequestOption]
+                : [];
+
+          if (recountRequests.length === 0) {
+            await client.messages.sendText({
+              phoneNumberId,
+              to: phoneNumber,
+              body: "No tienes solicitudes de reconteo asignadas por ahora.",
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            await client.messages.sendInteractiveRaw({
+              phoneNumberId,
+              to: phoneNumber,
+              interactive: getMainMenuButtons(),
+            });
+
+            await setSessionState(phoneNumber, "menu");
+            return new Response("OK", { status: 200 });
+          }
+
+          if (recountRequests.length > 1) {
+            const optionsText = recountRequests
+              .slice(0, 9)
+              .map((request, index) => `${index + 1}. ${getRequestDisplayName(request)}`)
+              .join("\n");
+
+            await client.messages.sendText({
+              phoneNumberId,
+              to: phoneNumber,
+              body:
+                "Tienes varias solicitudes de reconteo asignadas.\n" +
+                "Responde con el número de la solicitud que quieres auditar:\n\n" +
+                optionsText,
+            });
+
+            newState = "awaiting_audit_selection";
+            await setSessionState(phoneNumber, newState, {
+              recount_request_options: recountRequests,
+            });
+            return new Response("OK", { status: 200 });
+          }
+
+          const selectedRequest = recountRequests[0];
+
           await client.messages.sendText({
             phoneNumberId,
             to: phoneNumber,
-            body: AUDIT_DETAILS_MESSAGE,
+            body: buildAuditDetailsMessage(selectedRequest),
           });
 
           // Small delay to ensure messages arrive in order
@@ -126,14 +264,34 @@ export async function POST(req: Request) {
           });
 
           newState = "awaiting_audit_count";
+          await setSessionState(phoneNumber, newState, {
+            selected_recount_request: selectedRequest,
+          });
+          return new Response("OK", { status: 200 });
           break;
         case MENU_OPTIONS.CONFIRM_AUDIT:
           // User confirmed the count - save and return to menu
           console.log("Audit confirmed, returning to menu");
+
+          const confirmSessionData =
+            (session.session_data as Record<string, unknown> | undefined) || {};
+          const registeredCount =
+            typeof confirmSessionData.audit_count === "string"
+              ? confirmSessionData.audit_count
+              : "N/A";
+          const confirmedRequest =
+            confirmSessionData.selected_recount_request &&
+            typeof confirmSessionData.selected_recount_request === "object"
+              ? (confirmSessionData.selected_recount_request as RecountRequestOption)
+              : null;
+          const expectedCount = confirmedRequest
+            ? getRequestExpectedCount(confirmedRequest)
+            : "N/A";
+
           await client.messages.sendText({
             phoneNumberId,
             to: phoneNumber,
-            body: getCountConfirmationDetails(session.session_data.audit_count as string || "N/A", "hardcoded_expected_count"),
+            body: getCountConfirmationDetails(registeredCount, expectedCount),
           });
 
           await new Promise((resolve) => setTimeout(resolve, 500));
@@ -167,6 +325,49 @@ export async function POST(req: Request) {
     // Handle text messages based on session state
     const textMessage = data[0]?.message?.text?.body;
 
+    if (session.state === "awaiting_audit_selection" && textMessage) {
+      const selectionNumber = Number(textMessage.trim());
+      const sessionData = session.session_data || {};
+      const options = getSelectionOptions(sessionData);
+
+      if (!Number.isInteger(selectionNumber) || selectionNumber < 1 || selectionNumber > options.length) {
+        const optionsText = options
+          .map((request, index) => `${index + 1}. ${getRequestDisplayName(request)}`)
+          .join("\n");
+
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body:
+            "No entendí la selección. Responde con el número de la solicitud:\n\n" +
+            optionsText,
+        });
+        return new Response("OK", { status: 200 });
+      }
+
+      const selectedRequest = options[selectionNumber - 1];
+
+      await client.messages.sendText({
+        phoneNumberId,
+        to: phoneNumber,
+        body: buildAuditDetailsMessage(selectedRequest),
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      await client.messages.sendText({
+        phoneNumberId,
+        to: phoneNumber,
+        body: COUNT_INPUT_MESSAGE,
+      });
+
+      await setSessionState(phoneNumber, "awaiting_audit_count", {
+        selected_recount_request: selectedRequest,
+      });
+
+      return new Response("OK", { status: 200 });
+    }
+
     if (session.state === "awaiting_audit_count" && textMessage) {
       // User sent count in audit flow
       console.log("Received audit count:", textMessage);
@@ -189,6 +390,8 @@ export async function POST(req: Request) {
       // Store the count in session data and update state
       await setSessionState(phoneNumber, "audit_count_confirm", {
         audit_count: textMessage,
+        selected_recount_request:
+          (session.session_data as Record<string, unknown>)?.selected_recount_request || null,
       });
 
       console.log("Audit count confirmation sent");

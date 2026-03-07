@@ -2,8 +2,6 @@
  * WhatsApp message templates for BioCRowny bot
  */
 
-import { count } from "console";
-
 // Message constants
 export const WELCOME_MESSAGE =
   "Bienvenido a BioCRowny. Este bot te ayudará a gestionar tu inventario.";

@@ -7,7 +7,14 @@ export async function GET(
 ) {
   try {
     const { phone } = await params;
-    const result = await getInventoryRecountByPhone(phone);
+    const mockScenarioRaw = request.nextUrl.searchParams.get('mockScenario');
+    const mockScenario =
+      mockScenarioRaw === 'no_assigned_requests' ||
+      mockScenarioRaw === 'multiple_assigned_requests'
+        ? mockScenarioRaw
+        : undefined;
+
+    const result = await getInventoryRecountByPhone(phone, { mockScenario });
 
     if (!result.success) {
       return NextResponse.json(result, { status: 404 });
