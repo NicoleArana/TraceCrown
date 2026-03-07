@@ -26,7 +26,7 @@ export const MENU_OPTIONS = {
 export const AUDIT_DETAILS_MESSAGE =
   "📋 *Detalles de Auditoría*\n\n" +
   "📍 *Ubicación:* Bodega A\n" +
-  "📦 *Producto:* Caja de guantes M\n" ;
+  "📦 *Producto:* Caja de guantes \n" ;
 
 export const COUNT_INPUT_MESSAGE =
   "Por favor, ingresa el conteo del producto:";

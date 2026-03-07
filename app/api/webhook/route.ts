@@ -84,12 +84,17 @@ export async function POST(req: Request) {
       const buttonId = buttonReply.id;
       console.log("Button clicked:", buttonId);
 
-      // Send placeholder response
-      await client.messages.sendText({
-        phoneNumberId,
-        to: phoneNumber,
-        body: getPlaceholderResponse(buttonId),
-      });
+      const shouldSendPlaceholder =
+        buttonId === MENU_OPTIONS.CREATE_PRODUCT ||
+        buttonId === MENU_OPTIONS.CREATE_ORDER;
+
+      if (shouldSendPlaceholder) {
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: getPlaceholderResponse(buttonId),
+        });
+      }
 
       // Update session state based on button selection
       let newState: "creating_product" | "creating_order" | "auditing" | "menu" | "awaiting_audit_count" | "audit_count_confirm" = "menu";
