@@ -6,14 +6,6 @@ interface CompleteRecountBody {
   count?: number;
 }
 
-const parseQuantIds = (value: unknown): number[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter((id): id is number => typeof id === 'number');
-};
-
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as CompleteRecountBody;
@@ -36,52 +28,28 @@ export async function POST(request: NextRequest) {
 
     const odoo = await connectOdoo();
 
-    const recounts = await odoo.searchRead(
-      'stock.request.count',
-      [['id', '=', requestId]],
-      ['id', 'display_name', 'quant_ids'],
-      { limit: 1 }
-    );
-
-    if (recounts.length === 0) {
-      return NextResponse.json(
-        { success: false, error: `Recount request ${requestId} not found` },
-        { status: 404 }
-      );
-    }
-
-    const recount = recounts[0] as {
-      id: number;
-      display_name?: string;
-      quant_ids?: unknown;
+    const result = (await odoo.execute_kw('stock.request.count', 'trace_complete_recount_as_assignee', [
+      [requestId, count],
+    ])) as {
+      success: boolean;
+      request_id: number;
+      request_name?: string;
+      count: number;
+      updated_quant_ids: number[];
+      impersonated_user_id: number;
+      impersonated_user_name: string;
     };
 
-    const quantIds = parseQuantIds(recount.quant_ids);
-    if (quantIds.length === 0) {
-      return NextResponse.json(
-        { success: false, error: `Recount request ${requestId} has no quant_ids to update` },
-        { status: 400 }
-      );
-    }
-
-    for (const quantId of quantIds) {
-      await odoo.update('stock.quant', quantId, { inventory_quantity: count });
-    }
-
-    await odoo.execute_kw('stock.quant', 'trace_apply_inventory_with_history', [quantIds]);
-
-    try {
-      await odoo.update('stock.request.count', requestId, { state: 'done' });
-    } catch {
-      // Optional: some implementations do not expose state on this model.
-    }
-
     return NextResponse.json({
-      success: true,
-      requestId,
-      requestName: recount.display_name ?? null,
-      count,
-      updatedQuantIds: quantIds,
+      success: result.success,
+      requestId: result.request_id,
+      requestName: result.request_name ?? null,
+      count: result.count,
+      updatedQuantIds: result.updated_quant_ids,
+      appliedAsUser: {
+        id: result.impersonated_user_id,
+        name: result.impersonated_user_name,
+      },
       message: 'Inventory recount applied successfully',
     });
   } catch (error) {

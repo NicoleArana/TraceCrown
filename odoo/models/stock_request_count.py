@@ -32,6 +32,13 @@ class StockRequestCount(models.TransientModel):
             "assigned_user_name": user.name if user else None,
         }
 
+    def _get_assigned_user(self):
+        self.ensure_one()
+        assignment_field = self._get_assignment_field()
+        if not assignment_field:
+            return None
+        return self[assignment_field]
+
     @api.model_create_multi
     def create(self, vals_list):
         records = super().create(vals_list)
@@ -71,3 +78,49 @@ class StockRequestCount(models.TransientModel):
             requests.post("http://nextjs:3000/api/odoo", json=payload, timeout=5)
         except Exception:
             pass
+
+    @api.model
+    def trace_complete_recount_as_assignee(self, request_id, count=None):
+        if count is None and isinstance(request_id, (list, tuple)) and len(request_id) >= 2:
+            request_id, count = request_id[0], request_id[1]
+
+        if isinstance(request_id, (list, tuple)):
+            raise ValueError("request_id must be a scalar value")
+
+        if count is None:
+            raise ValueError("Count is required")
+
+        try:
+            request_id_int = int(request_id)
+            count_float = float(count)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("request_id and count must be numeric") from exc
+
+        request = self.browse(request_id_int).exists()
+        if not request:
+            raise ValueError(f"Recount request {request_id_int} not found")
+
+        assigned_user = request._get_assigned_user()
+        if not assigned_user:
+            raise ValueError(f"Recount request {request_id_int} has no assigned user")
+
+        quant_ids = request.quant_ids.ids if "quant_ids" in request._fields else []
+        if not quant_ids:
+            raise ValueError(f"Recount request {request_id_int} has no quant_ids to update")
+
+        quants = self.env["stock.quant"].browse(quant_ids).with_user(assigned_user)
+        quants.write({"inventory_quantity": count_float})
+        quants.action_apply_inventory()
+
+        if "state" in request._fields:
+            request.with_user(assigned_user).write({"state": "done"})
+
+        return {
+            "success": True,
+            "request_id": request.id,
+            "request_name": request.display_name,
+            "count": count_float,
+            "updated_quant_ids": quant_ids,
+            "impersonated_user_id": assigned_user.id,
+            "impersonated_user_name": assigned_user.name,
+        }
