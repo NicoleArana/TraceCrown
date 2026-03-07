@@ -2,20 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getInventoryRecountByPhone } from './get-user-by-phone';
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ phone: string }> }
 ) {
   try {
     const { phone } = await params;
-    const mockScenarioRaw = request.nextUrl.searchParams.get('mockScenario');
-    const mockScenario =
-      mockScenarioRaw === 'no_assigned_requests' ||
-      mockScenarioRaw === 'single_assigned_request' ||
-      mockScenarioRaw === 'multiple_assigned_requests'
-        ? mockScenarioRaw
-        : undefined;
-
-    const result = await getInventoryRecountByPhone(phone, { mockScenario });
+    const result = await getInventoryRecountByPhone(phone);
 
     if (!result.success) {
       return NextResponse.json(result, { status: 404 });

@@ -23,113 +23,12 @@ export interface InventoryRecountResponse {
     email: string;
   } | null;
   phone?: string;
-  mockScenario?: InventoryRecountMockScenario;
   error?: string;
 }
 
-export type InventoryRecountMockScenario =
-  | "no_assigned_requests"
-  | "single_assigned_request"
-  | "multiple_assigned_requests";
-
-function getMockInventoryRecountByPhone(
-  phone: string,
-  mockScenario: InventoryRecountMockScenario
-): InventoryRecountResponse {
-  const normalizedPhone = phone.replace(/\D/g, "");
-  const mockedUser = {
-    id: 999,
-    name: "Auditor Demo",
-    email: "auditor.demo@tracecrown.local",
-  };
-
-  if (mockScenario === "no_assigned_requests") {
-    return {
-      success: true,
-      hasRecountRequest: false,
-      recountRequest: null,
-      recountRequests: [],
-      user: mockedUser,
-      phone: normalizedPhone,
-      mockScenario,
-    };
-  }
-
-  if (mockScenario === "single_assigned_request") {
-    const singleRequest = {
-      id: 1201,
-      name: "RC-1201",
-      display_name: "RC-1201 / Bodega A / Guantes",
-      state: "in_progress",
-      product_name: "Caja de guantes",
-      location_name: "Bodega A",
-      expected_qty: 50,
-    };
-
-    return {
-      success: true,
-      hasRecountRequest: true,
-      recountRequest: singleRequest,
-      recountRequests: [singleRequest],
-      user: mockedUser,
-      phone: normalizedPhone,
-      mockScenario,
-    };
-  }
-
-  const mockRequests = [
-    {
-      id: 1201,
-      name: "RC-1201",
-      display_name: "RC-1201 / Bodega A / Guantes",
-      state: "in_progress",
-      product_name: "Caja de guantes",
-      location_name: "Bodega A",
-      expected_qty: 50,
-    },
-    {
-      id: 1202,
-      name: "RC-1202",
-      display_name: "RC-1202 / Bodega B / Cubrebocas",
-      state: "draft",
-      product_name: "Caja de cubrebocas",
-      location_name: "Bodega B",
-      expected_qty: 80,
-    },
-    {
-      id: 1203,
-      name: "RC-1203",
-      display_name: "RC-1203 / Bodega C / Alcohol",
-      state: "done",
-      product_name: "Alcohol en gel",
-      location_name: "Bodega C",
-      expected_qty: 30,
-    },
-  ];
-
-  const activeRecount =
-    mockRequests.find((request) => request.state !== "done" && request.state !== "cancel") ||
-    mockRequests[0];
-
-  return {
-    success: true,
-    hasRecountRequest: true,
-    recountRequest: activeRecount,
-    recountRequests: mockRequests,
-    user: mockedUser,
-    phone: normalizedPhone,
-    mockScenario,
-  };
-}
-
 export async function getInventoryRecountByPhone(
-  phone: string,
-  options?: { mockScenario?: InventoryRecountMockScenario }
+  phone: string
 ): Promise<InventoryRecountResponse> {
-  if (options?.mockScenario) {
-    return getMockInventoryRecountByPhone(phone, options.mockScenario);
-  }
-
   const normalizedPhone = phone.replace(/\D/g, '');
 
   const odoo = await connectOdoo();

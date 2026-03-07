@@ -18,15 +18,7 @@ import {
 } from "../../lib/whatsapp-templates";
 import { getUserByPhone } from "../odoo/user/[phone]/get-user-by-phone";
 import { getInventoryRecountByPhone } from "../odoo/inventory-recount/[phone]/get-user-by-phone";
-
-const INVENTORY_RECOUNT_MOCK_SCENARIOS = [
-  "no_assigned_requests",
-  "multiple_assigned_requests",
-  "single_assigned_request"
-] as const;
-
-type InventoryRecountMockScenario =
-  (typeof INVENTORY_RECOUNT_MOCK_SCENARIOS)[number];
+import { completeInventoryRecount } from "../odoo/inventory-recount/complete-recount";
 
 type RecountRequestOption = {
   id: number;
@@ -114,44 +106,6 @@ function getSelectionOptions(sessionData: Record<string, unknown>): RecountReque
   return raw.filter(
     (item): item is RecountRequestOption =>
       typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "number"
-  );
-}
-
-function parseInventoryRecountMockScenario(
-  value: string | null | undefined
-): InventoryRecountMockScenario | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const normalized = value.trim().toLowerCase();
-
-  if (
-    INVENTORY_RECOUNT_MOCK_SCENARIOS.includes(
-      normalized as InventoryRecountMockScenario
-    )
-  ) {
-    return normalized as InventoryRecountMockScenario;
-  }
-
-  return undefined;
-}
-
-function getInventoryRecountMockScenario(
-  req: Request
-):
-  | InventoryRecountMockScenario
-  | undefined {
-  const requestUrl = new URL(req.url);
-  const queryMockScenario = parseInventoryRecountMockScenario(
-    requestUrl.searchParams.get("mockScenario")
-  );
-  if (queryMockScenario) {
-    return queryMockScenario;
-  }
-
-  return parseInventoryRecountMockScenario(
-    process.env.INVENTORY_RECOUNT_MOCK_SCENARIO
   );
 }
 
@@ -339,18 +293,7 @@ export async function POST(req: Request) {
           newState = "creating_order";
           break;
         case MENU_OPTIONS.START_AUDIT:
-          const mockScenario = getInventoryRecountMockScenario(req);
-          if (mockScenario) {
-            console.log("Inventory recount mock scenario:", mockScenario);
-          } else if (process.env.INVENTORY_RECOUNT_MOCK_SCENARIO) {
-            console.log(
-              "Inventory recount mock scenario ignored (invalid value):",
-              process.env.INVENTORY_RECOUNT_MOCK_SCENARIO
-            );
-          }
-          const recountLookup = await getInventoryRecountByPhone(phoneNumber, {
-            mockScenario,
-          });
+          const recountLookup = await getInventoryRecountByPhone(phoneNumber);
 
           if (!recountLookup.success) {
             await client.messages.sendText({
@@ -473,6 +416,33 @@ export async function POST(req: Request) {
           const expectedCount = confirmedRequest
             ? getRequestExpectedCount(confirmedRequest)
             : "N/A";
+
+          const requestId = confirmedRequest?.id;
+          const countValue = Number(registeredCount);
+
+          if (!requestId || !Number.isFinite(countValue) || countValue < 0) {
+            await client.messages.sendText({
+              phoneNumberId,
+              to: phoneNumber,
+              body: "No pude guardar el conteo. Intenta ingresarlo de nuevo.",
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            await client.messages.sendText({
+              phoneNumberId,
+              to: phoneNumber,
+              body: COUNT_INPUT_MESSAGE,
+            });
+
+            await setSessionState(phoneNumber, "awaiting_audit_count", {
+              selected_recount_request: confirmedRequest || null,
+            });
+
+            return new Response("OK", { status: 200 });
+          }
+
+          await completeInventoryRecount(requestId, countValue);
 
           await client.messages.sendText({
             phoneNumberId,
