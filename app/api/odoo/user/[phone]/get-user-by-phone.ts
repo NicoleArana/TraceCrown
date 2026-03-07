@@ -76,9 +76,9 @@ export async function getUserByPhone(phone: string): Promise<UserByPhoneResponse
     let selectedRoleField: string | null = null;
     let users: unknown[] = [];
 
-    for (const roleField of [null, ...userRoleFieldCandidates]) {
+    for (const roleField of userRoleFieldCandidates) {
       try {
-        const fields = roleField ? [...baseFields, roleField] : baseFields;
+        const fields = [...baseFields, roleField];
         users = await odoo.searchRead('res.users', [['id', '=', partner.user_ids[0]]], fields, {
           limit: 1,
         });
@@ -87,6 +87,12 @@ export async function getUserByPhone(phone: string): Promise<UserByPhoneResponse
       } catch {
         continue;
       }
+    }
+
+    if (users.length === 0) {
+      users = await odoo.searchRead('res.users', [['id', '=', partner.user_ids[0]]], baseFields, {
+        limit: 1,
+      });
     }
 
     if (users.length > 0) {
