@@ -9,6 +9,7 @@
     "depends": ["stock"],
     "data": [
         "security/ir.model.access.csv",
+        "views/res_users_views.xml",
         "views/whatsapp_session_views.xml",
     ],
     "application": True,

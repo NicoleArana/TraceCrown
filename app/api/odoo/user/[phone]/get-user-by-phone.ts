@@ -1,5 +1,7 @@
 import { connectOdoo } from '@/src/odoo/client';
 
+type UserRole = 'auditor' | 'director';
+
 export interface UserByPhoneResponse {
   success: boolean;
   partner?: {
@@ -14,6 +16,7 @@ export interface UserByPhoneResponse {
     login: string;
     name: string;
     email: string;
+    role: UserRole | null;
   } | null;
   error?: string;
 }
@@ -21,12 +24,25 @@ export interface UserByPhoneResponse {
 export async function getUserByPhone(phone: string): Promise<UserByPhoneResponse> {
   const normalizedPhone = phone.replace(/\D/g, '');
 
+  const normalizeRole = (value: unknown): UserRole | null => {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'auditor' || normalized === 'director') {
+      return normalized;
+    }
+
+    return null;
+  };
+
   const odoo = await connectOdoo();
 
   const partners = await odoo.searchRead(
     'res.partner',
     [],
-    ['id', 'name', 'email', 'phone', 'mobile', 'user_ids'],
+    ['id', 'name', 'email', 'phone', 'mobile', 'user_ids', 'function'],
     { limit: 100 }
   );
 
@@ -47,19 +63,51 @@ export async function getUserByPhone(phone: string): Promise<UserByPhoneResponse
     email: string;
     phone: string;
     mobile: string;
+    function?: string;
     user_ids: number[];
   };
 
-  let odooUser: { id: number; login: string; name: string; email: string } | null = null;
+  let odooUser: { id: number; login: string; name: string; email: string; role: UserRole | null } | null = null;
+  const userRoleFieldCandidates = ['trace_crown_role', 'x_studio_role', 'x_role', 'x_user_role'];
+
   if (partner.user_ids && partner.user_ids.length > 0) {
-    const users = await odoo.searchRead(
-      'res.users',
-      [['id', '=', partner.user_ids[0]]],
-      ['id', 'login', 'name', 'email'],
-      { limit: 1 }
-    );
+    const baseFields = ['id', 'login', 'name', 'email'];
+
+    let selectedRoleField: string | null = null;
+    let users: unknown[] = [];
+
+    for (const roleField of [null, ...userRoleFieldCandidates]) {
+      try {
+        const fields = roleField ? [...baseFields, roleField] : baseFields;
+        users = await odoo.searchRead('res.users', [['id', '=', partner.user_ids[0]]], fields, {
+          limit: 1,
+        });
+        selectedRoleField = roleField;
+        break;
+      } catch {
+        continue;
+      }
+    }
+
     if (users.length > 0) {
-      odooUser = users[0] as { id: number; login: string; name: string; email: string };
+      const user = users[0] as {
+        id: number;
+        login: string;
+        name: string;
+        email: string;
+        [key: string]: unknown;
+      };
+
+      const roleFromUserField = selectedRoleField ? normalizeRole(user[selectedRoleField]) : null;
+      const roleFromPartnerFunction = normalizeRole(partner.function);
+
+      odooUser = {
+        id: user.id,
+        login: user.login,
+        name: user.name,
+        email: user.email,
+        role: roleFromUserField ?? roleFromPartnerFunction,
+      };
     }
   }
 
