@@ -29,6 +29,7 @@ export interface InventoryRecountResponse {
 
 export type InventoryRecountMockScenario =
   | "no_assigned_requests"
+  | "single_assigned_request"
   | "multiple_assigned_requests";
 
 function getMockInventoryRecountByPhone(
@@ -48,6 +49,28 @@ function getMockInventoryRecountByPhone(
       hasRecountRequest: false,
       recountRequest: null,
       recountRequests: [],
+      user: mockedUser,
+      phone: normalizedPhone,
+      mockScenario,
+    };
+  }
+
+  if (mockScenario === "single_assigned_request") {
+    const singleRequest = {
+      id: 1201,
+      name: "RC-1201",
+      display_name: "RC-1201 / Bodega A / Guantes",
+      state: "in_progress",
+      product_name: "Caja de guantes",
+      location_name: "Bodega A",
+      expected_qty: 50,
+    };
+
+    return {
+      success: true,
+      hasRecountRequest: true,
+      recountRequest: singleRequest,
+      recountRequests: [singleRequest],
       user: mockedUser,
       phone: normalizedPhone,
       mockScenario,

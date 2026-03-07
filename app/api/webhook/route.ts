@@ -19,6 +19,15 @@ import {
 import { getUserByPhone } from "../odoo/user/[phone]/get-user-by-phone";
 import { getInventoryRecountByPhone } from "../odoo/inventory-recount/[phone]/get-user-by-phone";
 
+const INVENTORY_RECOUNT_MOCK_SCENARIOS = [
+  "no_assigned_requests",
+  "multiple_assigned_requests",
+  "single_assigned_request"
+] as const;
+
+type InventoryRecountMockScenario =
+  (typeof INVENTORY_RECOUNT_MOCK_SCENARIOS)[number];
+
 type RecountRequestOption = {
   id: number;
   name?: string;
@@ -30,6 +39,23 @@ type RecountRequestOption = {
   [key: string]: unknown;
 };
 
+const RECOUNT_SELECTION_ROW_PREFIX = "select_recount_";
+const RECOUNT_SELECTION_BACK_ID = "recount_back_to_menu";
+
+function toListRowTitle(request: RecountRequestOption): string {
+  const maxLength = 24;
+  const rawTitle = getRequestDisplayName(request);
+  return rawTitle.length <= maxLength
+    ? rawTitle
+    : `${rawTitle.slice(0, maxLength - 1)}…`;
+}
+
+function toListRowDescription(request: RecountRequestOption): string {
+  const product = getRequestProduct(request);
+  const location = getRequestLocation(request);
+  return `${product} | ${location}`;
+}
+
 function getMany2oneName(value: unknown): string | null {
   if (Array.isArray(value) && value.length > 1 && typeof value[1] === "string") {
     return value[1];
@@ -38,7 +64,7 @@ function getMany2oneName(value: unknown): string | null {
 }
 
 function getRequestDisplayName(request: RecountRequestOption): string {
-  return request.display_name || request.name || `Solicitud #${request.id}`;
+  return `Solicitud #${request.id}`;
 }
 
 function getRequestProduct(request: RecountRequestOption): string {
@@ -88,6 +114,44 @@ function getSelectionOptions(sessionData: Record<string, unknown>): RecountReque
   return raw.filter(
     (item): item is RecountRequestOption =>
       typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "number"
+  );
+}
+
+function parseInventoryRecountMockScenario(
+  value: string | null | undefined
+): InventoryRecountMockScenario | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (
+    INVENTORY_RECOUNT_MOCK_SCENARIOS.includes(
+      normalized as InventoryRecountMockScenario
+    )
+  ) {
+    return normalized as InventoryRecountMockScenario;
+  }
+
+  return undefined;
+}
+
+function getInventoryRecountMockScenario(
+  req: Request
+):
+  | InventoryRecountMockScenario
+  | undefined {
+  const requestUrl = new URL(req.url);
+  const queryMockScenario = parseInventoryRecountMockScenario(
+    requestUrl.searchParams.get("mockScenario")
+  );
+  if (queryMockScenario) {
+    return queryMockScenario;
+  }
+
+  return parseInventoryRecountMockScenario(
+    process.env.INVENTORY_RECOUNT_MOCK_SCENARIO
   );
 }
 
@@ -148,13 +212,102 @@ export async function POST(req: Request) {
     console.log("Session state:", session.state);
     console.log("First message received:", session.first_message_received);
 
-    // Check if this is a button interaction
-    const buttonReply = data[0]?.message?.interactive?.button_reply;
+    // Check if this is an interactive reply
+    const interactiveReply = data[0]?.message?.interactive;
+    const buttonReply = interactiveReply?.button_reply;
+    const listReply = interactiveReply?.list_reply;
     
-    if (buttonReply) {
+    if (buttonReply || listReply) {
       // Handle button click
-      const buttonId = buttonReply.id;
+      const buttonId = buttonReply?.id ?? listReply?.id;
+
+      if (!buttonId) {
+        return new Response("OK", { status: 200 });
+      }
+
       console.log("Button clicked:", buttonId);
+
+      if (
+        session.state === "awaiting_audit_selection" &&
+        buttonId === RECOUNT_SELECTION_BACK_ID
+      ) {
+        await client.messages.sendInteractiveRaw({
+          phoneNumberId,
+          to: phoneNumber,
+          interactive: getMainMenuButtons(),
+        });
+
+        await setSessionState(phoneNumber, "menu");
+        return new Response("OK", { status: 200 });
+      }
+
+      if (
+        session.state === "awaiting_audit_selection" &&
+        buttonId.startsWith(RECOUNT_SELECTION_ROW_PREFIX)
+      ) {
+        const selectedId = Number(
+          buttonId.slice(RECOUNT_SELECTION_ROW_PREFIX.length)
+        );
+        const sessionData =
+          (session.session_data as Record<string, unknown> | undefined) || {};
+        const options = getSelectionOptions(sessionData);
+        const selectedRequest = options.find((request) => request.id === selectedId);
+
+        if (!selectedRequest) {
+          await client.messages.sendText({
+            phoneNumberId,
+            to: phoneNumber,
+            body: "No pude identificar la solicitud seleccionada. Vuelve a intentarlo.",
+          });
+
+          const optionRows = options.slice(0, 9).map((request) => ({
+            id: `${RECOUNT_SELECTION_ROW_PREFIX}${request.id}`,
+            title: toListRowTitle(request),
+            description: toListRowDescription(request),
+          }));
+
+          optionRows.push({
+            id: RECOUNT_SELECTION_BACK_ID,
+            title: "Volver al menu",
+            description: "Regresar al menu principal",
+          });
+
+          await client.messages.sendInteractiveList({
+            phoneNumberId,
+            to: phoneNumber,
+            bodyText: "Selecciona la solicitud a auditar:",
+            buttonText: "Ver solicitudes",
+            sections: [
+              {
+                title: "Solicitudes disponibles",
+                rows: optionRows,
+              },
+            ],
+          });
+
+          return new Response("OK", { status: 200 });
+        }
+
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: buildAuditDetailsMessage(selectedRequest),
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: COUNT_INPUT_MESSAGE,
+        });
+
+        await setSessionState(phoneNumber, "awaiting_audit_count", {
+          selected_recount_request: selectedRequest,
+        });
+
+        return new Response("OK", { status: 200 });
+      }
 
       const shouldSendPlaceholder =
         buttonId === MENU_OPTIONS.CREATE_PRODUCT ||
@@ -186,7 +339,18 @@ export async function POST(req: Request) {
           newState = "creating_order";
           break;
         case MENU_OPTIONS.START_AUDIT:
-          const recountLookup = await getInventoryRecountByPhone(phoneNumber);
+          const mockScenario = getInventoryRecountMockScenario(req);
+          if (mockScenario) {
+            console.log("Inventory recount mock scenario:", mockScenario);
+          } else if (process.env.INVENTORY_RECOUNT_MOCK_SCENARIO) {
+            console.log(
+              "Inventory recount mock scenario ignored (invalid value):",
+              process.env.INVENTORY_RECOUNT_MOCK_SCENARIO
+            );
+          }
+          const recountLookup = await getInventoryRecountByPhone(phoneNumber, {
+            mockScenario,
+          });
 
           if (!recountLookup.success) {
             await client.messages.sendText({
@@ -224,18 +388,40 @@ export async function POST(req: Request) {
           }
 
           if (recountRequests.length > 1) {
-            const optionsText = recountRequests
-              .slice(0, 9)
-              .map((request, index) => `${index + 1}. ${getRequestDisplayName(request)}`)
-              .join("\n");
+            const optionRows = recountRequests.slice(0, 9).map((request) => ({
+              id: `${RECOUNT_SELECTION_ROW_PREFIX}${request.id}`,
+              title: toListRowTitle(request),
+              description: toListRowDescription(request),
+            }));
+
+            optionRows.push({
+              id: RECOUNT_SELECTION_BACK_ID,
+              title: "Volver al menu",
+              description: "Regresar al menu principal",
+            });
 
             await client.messages.sendText({
               phoneNumberId,
               to: phoneNumber,
               body:
-                "Tienes varias solicitudes de reconteo asignadas.\n" +
-                "Responde con el número de la solicitud que quieres auditar:\n\n" +
-                optionsText,
+                recountRequests.length > 9
+                  ? "Tienes varias solicitudes de reconteo. Te muestro las primeras 9 para continuar."
+                  : "Tienes varias solicitudes de reconteo asignadas.",
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            await client.messages.sendInteractiveList({
+              phoneNumberId,
+              to: phoneNumber,
+              bodyText: "Selecciona la solicitud a auditar:",
+              buttonText: "Ver solicitudes",
+              sections: [
+                {
+                  title: "Solicitudes disponibles",
+                  rows: optionRows,
+                },
+              ],
             });
 
             newState = "awaiting_audit_selection";
@@ -326,43 +512,40 @@ export async function POST(req: Request) {
     const textMessage = data[0]?.message?.text?.body;
 
     if (session.state === "awaiting_audit_selection" && textMessage) {
-      const selectionNumber = Number(textMessage.trim());
       const sessionData = session.session_data || {};
       const options = getSelectionOptions(sessionData);
 
-      if (!Number.isInteger(selectionNumber) || selectionNumber < 1 || selectionNumber > options.length) {
-        const optionsText = options
-          .map((request, index) => `${index + 1}. ${getRequestDisplayName(request)}`)
-          .join("\n");
+      const optionRows = options.slice(0, 9).map((request) => ({
+        id: `${RECOUNT_SELECTION_ROW_PREFIX}${request.id}`,
+        title: toListRowTitle(request),
+        description: toListRowDescription(request),
+      }));
 
-        await client.messages.sendText({
-          phoneNumberId,
-          to: phoneNumber,
-          body:
-            "No entendí la selección. Responde con el número de la solicitud:\n\n" +
-            optionsText,
-        });
-        return new Response("OK", { status: 200 });
-      }
-
-      const selectedRequest = options[selectionNumber - 1];
+      optionRows.push({
+        id: RECOUNT_SELECTION_BACK_ID,
+        title: "Volver al menu",
+        description: "Regresar al menu principal",
+      });
 
       await client.messages.sendText({
         phoneNumberId,
         to: phoneNumber,
-        body: buildAuditDetailsMessage(selectedRequest),
+        body: "Para seleccionar una solicitud, usa la lista.",
       });
 
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      await client.messages.sendText({
+      await client.messages.sendInteractiveList({
         phoneNumberId,
         to: phoneNumber,
-        body: COUNT_INPUT_MESSAGE,
-      });
-
-      await setSessionState(phoneNumber, "awaiting_audit_count", {
-        selected_recount_request: selectedRequest,
+        bodyText: "Selecciona la solicitud a auditar:",
+        buttonText: "Ver solicitudes",
+        sections: [
+          {
+            title: "Solicitudes disponibles",
+            rows: optionRows,
+          },
+        ],
       });
 
       return new Response("OK", { status: 200 });

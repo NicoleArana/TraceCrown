@@ -10,6 +10,7 @@ export async function GET(
     const mockScenarioRaw = request.nextUrl.searchParams.get('mockScenario');
     const mockScenario =
       mockScenarioRaw === 'no_assigned_requests' ||
+      mockScenarioRaw === 'single_assigned_request' ||
       mockScenarioRaw === 'multiple_assigned_requests'
         ? mockScenarioRaw
         : undefined;
