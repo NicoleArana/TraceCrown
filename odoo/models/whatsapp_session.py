@@ -19,6 +19,8 @@ class WhatsAppSession(models.Model):
             ("creating_product", "Creating Product"),
             ("creating_order", "Creating Order"),
             ("auditing", "Auditing"),
+            ("awaiting_audit_count", "Awaiting Audit Count"),
+            ("audit_count_confirm", "Audit Count Confirmation"),
         ],
         string="Session State",
         default="new",
