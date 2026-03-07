@@ -159,9 +159,40 @@ export async function getInventoryRecountByPhone(
     };
   }
 
-  const inventoryRecounts = await odoo.searchRead('stock.request.count', [], undefined, {
-    limit: 100,
-  });
+  const recountFieldSets: Array<string[] | undefined> = [
+    [
+      'id',
+      'name',
+      'display_name',
+      'state',
+      'inventory_date',
+      'quant_ids',
+      'set_count',
+      'user_id',
+      'assigned_user_id',
+      'responsible_id',
+      'requester_id',
+      'requested_by',
+      'create_uid',
+      'create_date',
+      'write_uid',
+      'write_date',
+    ],
+    ['id', 'name', 'display_name', 'state', 'quant_ids', 'user_id'],
+    undefined,
+  ];
+
+  let inventoryRecounts: unknown[] = [];
+  for (const fields of recountFieldSets) {
+    try {
+      inventoryRecounts = await odoo.searchRead('stock.request.count', [], fields, {
+        limit: 100,
+      });
+      break;
+    } catch {
+      continue;
+    }
+  }
 
   const userFieldCandidates = [
     'user_id',
@@ -169,8 +200,6 @@ export async function getInventoryRecountByPhone(
     'responsible_id',
     'requester_id',
     'requested_by',
-    'create_uid',
-    'write_uid',
   ];
 
   const getRelatedId = (value: unknown): number | null => {
@@ -189,10 +218,15 @@ export async function getInventoryRecountByPhone(
     return userFieldCandidates.some((field) => getRelatedId(request[field]) === odooUser.id);
   });
 
-  const activeRecount = assignedRequests.find((request) => {
+  const openAssignedRequests = assignedRequests.filter((request) => {
     const state = typeof request.state === 'string' ? request.state.toLowerCase() : '';
-    return state !== 'done' && state !== 'cancel';
-  }) || assignedRequests[0];
+    return state !== 'done' && state !== 'cancel' && state !== 'cancelled';
+  });
+
+  const activeRecount = openAssignedRequests.find((request) => {
+    const state = typeof request.state === 'string' ? request.state.toLowerCase() : '';
+    return state !== 'done' && state !== 'cancel' && state !== 'cancelled';
+  }) || openAssignedRequests[0];
 
   return {
     success: true,
@@ -206,7 +240,7 @@ export async function getInventoryRecountByPhone(
           [key: string]: unknown;
         })
       : null,
-    recountRequests: assignedRequests as Array<{
+    recountRequests: openAssignedRequests as Array<{
       id: number;
       name?: string;
       display_name?: string;

@@ -115,6 +115,17 @@ class StockRequestCount(models.TransientModel):
         if "state" in request._fields:
             request.with_user(assigned_user).write({"state": "done"})
 
+        request_removed = False
+        try:
+            request.with_user(assigned_user).unlink()
+            request_removed = True
+        except Exception:
+            try:
+                request.sudo().unlink()
+                request_removed = True
+            except Exception:
+                request_removed = False
+
         return {
             "success": True,
             "request_id": request.id,
@@ -123,4 +134,5 @@ class StockRequestCount(models.TransientModel):
             "updated_quant_ids": quant_ids,
             "impersonated_user_id": assigned_user.id,
             "impersonated_user_name": assigned_user.name,
+            "request_removed": request_removed,
         }
