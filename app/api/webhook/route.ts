@@ -17,22 +17,21 @@ import {
   getCountConfirmationDetails,
 } from "../../lib/whatsapp-templates";
 import { getUserByPhone } from "../odoo/user/[phone]/get-user-by-phone";
-import { getInventoryRecountByPhone } from "../odoo/inventory-recount/[phone]/get-user-by-phone";
+import { getInventoryRecountByPhone, RecountProduct, RecountRequestWithProducts } from "../odoo/inventory-recount/[phone]/get-recount-by-phone";
 import { completeInventoryRecount } from "../odoo/inventory-recount/complete-recount";
 
-type RecountRequestOption = {
-  id: number;
-  name?: string;
-  display_name?: string;
-  state?: string;
-  product_name?: string;
-  location_name?: string;
-  expected_qty?: number;
-  [key: string]: unknown;
+type RecountRequestOption = RecountRequestWithProducts;
+
+type CountedProduct = {
+  product_id: [number, string];
+  quantity: number;
+  location_id: [number, string];
 };
 
 const RECOUNT_SELECTION_ROW_PREFIX = "select_recount_";
 const RECOUNT_SELECTION_BACK_ID = "recount_back_to_menu";
+
+const PRODUCT_SELECTION_ROW_PREFIX = "select_product_";
 
 function toListRowTitle(request: RecountRequestOption): string {
   const maxLength = 24;
@@ -48,52 +47,80 @@ function toListRowDescription(request: RecountRequestOption): string {
   return `${product} | ${location}`;
 }
 
-function getMany2oneName(value: unknown): string | null {
-  if (Array.isArray(value) && value.length > 1 && typeof value[1] === "string") {
-    return value[1];
-  }
-  return null;
-}
+
 
 function getRequestDisplayName(request: RecountRequestOption): string {
   return `Solicitud #${request.id}`;
 }
 
 function getRequestProduct(request: RecountRequestOption): string {
-  const fromMany2one = getMany2oneName(request.product_id);
-  return request.product_name || fromMany2one || "No especificado";
+  const products = request.products || [];
+  if (products.length === 0) return "No especificado";
+  if (products.length === 1) return products[0].product_id[1];
+  return `${products.length} productos`;
 }
 
 function getRequestLocation(request: RecountRequestOption): string {
-  const fromMany2one = getMany2oneName(request.location_id);
-  return request.location_name || fromMany2one || "No especificada";
+  const products = request.products || [];
+  if (products.length === 0) return "No especificada";
+  if (products.length === 1) return products[0].location_id[1];
+  const uniqueLocations = [...new Set(products.map(p => p.location_id[1]))];
+  return uniqueLocations.join(", ");
 }
 
 function getRequestExpectedCount(request: RecountRequestOption): string {
-  const expectedQty = request.expected_qty;
-  if (typeof expectedQty === "number") {
-    return String(expectedQty);
-  }
+  const products = request.products || [];
+  if (products.length === 0) return "N/A";
+  if (products.length === 1) return String(products[0].quantity);
+  return `${products.length} productos`;
+}
 
-  const inventoryQty = request.inventory_qty;
-  if (typeof inventoryQty === "number") {
-    return String(inventoryQty);
-  }
+function getProductDisplayName(product: RecountProduct): string {
+  return product.product_id[1];
+}
 
-  const productQty = request.product_qty;
-  if (typeof productQty === "number") {
-    return String(productQty);
-  }
+function getProductLocation(product: RecountProduct): string {
+  return product.location_id[1];
+}
 
-  return "N/A";
+function getProductExpectedQty(product: RecountProduct): string {
+  return String(product.quantity);
 }
 
 function buildAuditDetailsMessage(request: RecountRequestOption): string {
+  const products = request.products || [];
+  
+  if (products.length === 0) {
+    return (
+      "📋 *Detalles de Auditoría*\n\n" +
+      `🧾 *Solicitud:* ${getRequestDisplayName(request)}\n` +
+      `📍 *Ubicación:* ${getRequestLocation(request)}\n` +
+      `📦 *Producto:* ${getRequestProduct(request)}`
+    );
+  }
+
+  let message = "📋 *Detalles de Auditoría*\n\n";
+  message += `🧾 *Solicitud:* ${getRequestDisplayName(request)}\n`;
+  message += `📍 *Ubicación:* ${getRequestLocation(request)}\n`;
+  message += `📦 *Productos:* ${products.length}\n\n`;
+  
+  products.slice(0, 3).forEach((p, i) => {
+    message += `${i + 1}. ${p.product_id[1]} (${p.quantity})\n`;
+  });
+  
+  if (products.length > 3) {
+    message += `... y ${products.length - 3} más`;
+  }
+  
+  return message;
+}
+
+function buildProductDetailsMessage(product: RecountProduct): string {
   return (
-    "📋 *Detalles de Auditoría*\n\n" +
-    `🧾 *Solicitud:* ${getRequestDisplayName(request)}\n` +
-    `📍 *Ubicación:* ${getRequestLocation(request)}\n` +
-    `📦 *Producto:* ${getRequestProduct(request)}`
+    "📦 *Producto a contar*\n\n" +
+    `*Nombre:* ${getProductDisplayName(product)}\n` +
+    `📍 *Ubicación:* ${getProductLocation(product)}\n` +
+    `📊 *Cantidad esperada:* ${getProductExpectedQty(product)}`
   );
 }
 
@@ -106,6 +133,30 @@ function getSelectionOptions(sessionData: Record<string, unknown>): RecountReque
   return raw.filter(
     (item): item is RecountRequestOption =>
       typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "number"
+  );
+}
+
+function getProductSelectionOptions(sessionData: Record<string, unknown>): RecountProduct[] {
+  const raw = sessionData.product_options;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.filter(
+    (item): item is RecountProduct =>
+      typeof item === "object" && item !== null && typeof (item as { product_id?: unknown }).product_id === "object"
+  );
+}
+
+function getCountedProducts(sessionData: Record<string, unknown>): CountedProduct[] {
+  const raw = sessionData.counted_products;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.filter(
+    (item): item is CountedProduct =>
+      typeof item === "object" && item !== null && Array.isArray(item.product_id)
   );
 }
 
@@ -242,10 +293,66 @@ export async function POST(req: Request) {
           return new Response("OK", { status: 200 });
         }
 
+        const products = selectedRequest.products || [];
+
+        if (products.length === 0) {
+          await client.messages.sendText({
+            phoneNumberId,
+            to: phoneNumber,
+            body: "Esta solicitud no tiene productos asociados.",
+          });
+          await setSessionState(phoneNumber, "menu");
+          return new Response("OK", { status: 200 });
+        }
+
         await client.messages.sendText({
           phoneNumberId,
           to: phoneNumber,
           body: buildAuditDetailsMessage(selectedRequest),
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        if (products.length > 1) {
+          const productRows = products.slice(0, 9).map((product) => ({
+            id: `${PRODUCT_SELECTION_ROW_PREFIX}${product.id}`,
+            title: getProductDisplayName(product).slice(0, 24),
+            description: `Cant: ${product.quantity} | ${getProductLocation(product).slice(0, 20)}`,
+          }));
+
+          productRows.push({
+            id: RECOUNT_SELECTION_BACK_ID,
+            title: "Volver",
+            description: "Cambiar solicitud",
+          });
+
+          await client.messages.sendInteractiveList({
+            phoneNumberId,
+            to: phoneNumber,
+            bodyText: "Esta solicitud tiene varios productos. Selecciona uno para contar:",
+            buttonText: "Ver productos",
+            sections: [
+              {
+                title: "Productos",
+                rows: productRows,
+              },
+            ],
+          });
+
+          await setSessionState(phoneNumber, "awaiting_product_selection", {
+            selected_recount_request: selectedRequest,
+            product_options: products,
+            counted_products: [],
+          });
+
+          return new Response("OK", { status: 200 });
+        }
+
+        const singleProduct = products[0];
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: buildProductDetailsMessage(singleProduct),
         });
 
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -258,6 +365,112 @@ export async function POST(req: Request) {
 
         await setSessionState(phoneNumber, "awaiting_audit_count", {
           selected_recount_request: selectedRequest,
+          current_product: singleProduct,
+          counted_products: [],
+        });
+
+        return new Response("OK", { status: 200 });
+      }
+
+      if (
+        session.state === "awaiting_product_selection" &&
+        buttonId === RECOUNT_SELECTION_BACK_ID
+      ) {
+        const sessionData =
+          (session.session_data as Record<string, unknown> | undefined) || {};
+        const options = getSelectionOptions(sessionData);
+
+        if (options.length === 0) {
+          await client.messages.sendInteractiveRaw({
+            phoneNumberId,
+            to: phoneNumber,
+            interactive: getMainMenuButtons(),
+          });
+          await setSessionState(phoneNumber, "menu");
+          return new Response("OK", { status: 200 });
+        }
+
+        const optionRows = options.slice(0, 9).map((request) => ({
+          id: `${RECOUNT_SELECTION_ROW_PREFIX}${request.id}`,
+          title: toListRowTitle(request),
+          description: toListRowDescription(request),
+        }));
+
+        optionRows.push({
+          id: RECOUNT_SELECTION_BACK_ID,
+          title: "Volver al menu",
+          description: "Regresar al menu principal",
+        });
+
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: "Selecciona la solicitud a auditar:",
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        await client.messages.sendInteractiveList({
+          phoneNumberId,
+          to: phoneNumber,
+          bodyText: "Selecciona la solicitud a auditar:",
+          buttonText: "Ver solicitudes",
+          sections: [
+            {
+              title: "Solicitudes disponibles",
+              rows: optionRows,
+            },
+          ],
+        });
+
+        await setSessionState(phoneNumber, "awaiting_audit_selection", {
+          recount_request_options: options,
+        });
+
+        return new Response("OK", { status: 200 });
+      }
+
+      if (
+        session.state === "awaiting_product_selection" &&
+        buttonId.startsWith(PRODUCT_SELECTION_ROW_PREFIX)
+      ) {
+        const selectedProductId = Number(
+          buttonId.slice(PRODUCT_SELECTION_ROW_PREFIX.length)
+        );
+        const sessionData =
+          (session.session_data as Record<string, unknown> | undefined) || {};
+        const productOptions = getProductSelectionOptions(sessionData);
+        const selectedProduct = productOptions.find((p) => p.id === selectedProductId);
+        const selectedRequest = sessionData.selected_recount_request as RecountRequestOption | undefined;
+
+        if (!selectedProduct || !selectedRequest) {
+          await client.messages.sendText({
+            phoneNumberId,
+            to: phoneNumber,
+            body: "No pude identificar el producto seleccionado. Vuelve a intentarlo.",
+          });
+          await setSessionState(phoneNumber, "menu");
+          return new Response("OK", { status: 200 });
+        }
+
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: buildProductDetailsMessage(selectedProduct),
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: COUNT_INPUT_MESSAGE,
+        });
+
+        await setSessionState(phoneNumber, "awaiting_audit_count", {
+          selected_recount_request: selectedRequest,
+          current_product: selectedProduct,
+          counted_products: getCountedProducts(sessionData),
         });
 
         return new Response("OK", { status: 200 });
@@ -282,6 +495,7 @@ export async function POST(req: Request) {
         | "auditing"
         | "menu"
         | "awaiting_audit_selection"
+        | "awaiting_product_selection"
         | "awaiting_audit_count"
         | "audit_count_confirm" = "menu";
 
@@ -304,12 +518,7 @@ export async function POST(req: Request) {
             return new Response("OK", { status: 200 });
           }
 
-          const recountRequests =
-            recountLookup.recountRequests && recountLookup.recountRequests.length > 0
-              ? (recountLookup.recountRequests as RecountRequestOption[])
-              : recountLookup.recountRequest
-                ? [recountLookup.recountRequest as RecountRequestOption]
-                : [];
+          const recountRequests = recountLookup.recountRequests || [];
 
           if (recountRequests.length === 0) {
             await client.messages.sendText({
@@ -399,56 +608,99 @@ export async function POST(req: Request) {
           return new Response("OK", { status: 200 });
           break;
         case MENU_OPTIONS.CONFIRM_AUDIT:
-          // User confirmed the count - save and return to menu
           console.log("Audit confirmed, returning to menu");
 
           const confirmSessionData =
             (session.session_data as Record<string, unknown> | undefined) || {};
-          const registeredCount =
-            typeof confirmSessionData.audit_count === "string"
-              ? confirmSessionData.audit_count
-              : "N/A";
+          const countedProducts = getCountedProducts(confirmSessionData);
           const confirmedRequest =
             confirmSessionData.selected_recount_request &&
             typeof confirmSessionData.selected_recount_request === "object"
               ? (confirmSessionData.selected_recount_request as RecountRequestOption)
               : null;
-          const expectedCount = confirmedRequest
-            ? getRequestExpectedCount(confirmedRequest)
-            : "N/A";
 
-          const requestId = confirmedRequest?.id;
-          const countValue = Number(registeredCount);
-
-          if (!requestId || !Number.isFinite(countValue) || countValue < 0) {
+          if (!confirmedRequest) {
             await client.messages.sendText({
               phoneNumberId,
               to: phoneNumber,
-              body: "No pude guardar el conteo. Intenta ingresarlo de nuevo.",
+              body: "No tengo información del reconteo. Regresa al menú e intenta de nuevo.",
             });
 
             await new Promise((resolve) => setTimeout(resolve, 500));
 
-            await client.messages.sendText({
+            await client.messages.sendInteractiveRaw({
               phoneNumberId,
               to: phoneNumber,
-              body: COUNT_INPUT_MESSAGE,
+              interactive: getMainMenuButtons(),
             });
 
-            await setSessionState(phoneNumber, "awaiting_audit_count", {
-              selected_recount_request: confirmedRequest || null,
-            });
-
+            await setSessionState(phoneNumber, "menu");
             return new Response("OK", { status: 200 });
           }
 
-          await completeInventoryRecount(requestId, countValue);
+          const requestId = confirmedRequest.id;
 
-          await client.messages.sendText({
-            phoneNumberId,
-            to: phoneNumber,
-            body: getCountConfirmationDetails(registeredCount, expectedCount),
-          });
+          if (countedProducts.length > 0) {
+            const results: string[] = [];
+
+            for (const countedProduct of countedProducts) {
+              try {
+                await completeInventoryRecount(requestId, countedProduct.quantity);
+                results.push(`✅ ${countedProduct.product_id[1]}: ${countedProduct.quantity}`);
+              } catch (error) {
+                console.error("Error completing recount for product:", error);
+                results.push(`❌ ${countedProduct.product_id[1]}: ${countedProduct.quantity} (error)`);
+              }
+            }
+
+            const summary = "📊 *Resultado del reconteo*\n\n" + results.join("\n");
+
+            await client.messages.sendText({
+              phoneNumberId,
+              to: phoneNumber,
+              body: summary,
+            });
+          } else {
+            const registeredCount =
+              typeof confirmSessionData.audit_count === "string"
+                ? confirmSessionData.audit_count
+                : "N/A";
+            const expectedCount = confirmedRequest
+              ? getRequestExpectedCount(confirmedRequest)
+              : "N/A";
+
+            const countValue = Number(registeredCount);
+
+            if (!requestId || !Number.isFinite(countValue) || countValue < 0) {
+              await client.messages.sendText({
+                phoneNumberId,
+                to: phoneNumber,
+                body: "No pude guardar el conteo. Intenta ingresarlo de nuevo.",
+              });
+
+              await new Promise((resolve) => setTimeout(resolve, 500));
+
+              await client.messages.sendText({
+                phoneNumberId,
+                to: phoneNumber,
+                body: COUNT_INPUT_MESSAGE,
+              });
+
+              await setSessionState(phoneNumber, "awaiting_audit_count", {
+                selected_recount_request: confirmedRequest || null,
+              });
+
+              return new Response("OK", { status: 200 });
+            }
+
+            await completeInventoryRecount(requestId, countValue);
+
+            await client.messages.sendText({
+              phoneNumberId,
+              to: phoneNumber,
+              body: getCountConfirmationDetails(registeredCount, expectedCount),
+            });
+          }
 
           await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -521,11 +773,149 @@ export async function POST(req: Request) {
       return new Response("OK", { status: 200 });
     }
 
+    if (session.state === "awaiting_product_selection" && textMessage) {
+      const sessionData = session.session_data as Record<string, unknown> | undefined;
+      const productOptions = getProductSelectionOptions(sessionData || {});
+      const selectedRequest = sessionData?.selected_recount_request as RecountRequestOption | undefined;
+
+      if (productOptions.length === 0 || !selectedRequest) {
+        await client.messages.sendInteractiveRaw({
+          phoneNumberId,
+          to: phoneNumber,
+          interactive: getMainMenuButtons(),
+        });
+        await setSessionState(phoneNumber, "menu");
+        return new Response("OK", { status: 200 });
+      }
+
+      const productRows = productOptions.slice(0, 9).map((product) => ({
+        id: `${PRODUCT_SELECTION_ROW_PREFIX}${product.id}`,
+        title: getProductDisplayName(product).slice(0, 24),
+        description: `Cant: ${product.quantity} | ${getProductLocation(product).slice(0, 20)}`,
+      }));
+
+      await client.messages.sendText({
+        phoneNumberId,
+        to: phoneNumber,
+        body: "Para seleccionar un producto, usa la lista.",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      await client.messages.sendInteractiveList({
+        phoneNumberId,
+        to: phoneNumber,
+        bodyText: "Selecciona el producto a contar:",
+        buttonText: "Ver productos",
+        sections: [
+          {
+            title: "Productos",
+            rows: productRows,
+          },
+        ],
+      });
+
+      return new Response("OK", { status: 200 });
+    }
+
     if (session.state === "awaiting_audit_count" && textMessage) {
-      // User sent count in audit flow
       console.log("Received audit count:", textMessage);
 
-      // Send confirmation with the count and buttons
+      const sessionData = session.session_data as Record<string, unknown> | undefined;
+      const selectedRequest = sessionData?.selected_recount_request as RecountRequestOption | undefined;
+      const currentProduct = sessionData?.current_product as RecountProduct | undefined;
+      const countedProducts = getCountedProducts(sessionData || {});
+
+      if (currentProduct) {
+        const newCountedProduct: CountedProduct = {
+          product_id: currentProduct.product_id,
+          quantity: Number(textMessage),
+          location_id: currentProduct.location_id,
+        };
+
+        const allProducts = selectedRequest?.products || [];
+        const remainingProducts = allProducts.filter(
+          (p) => !countedProducts.some((cp) => cp.product_id[0] === p.product_id[0]) &&
+                 p.product_id[0] !== currentProduct.product_id[0]
+        );
+
+        const updatedCountedProducts = [...countedProducts, newCountedProduct];
+
+        if (remainingProducts.length > 0) {
+          const productRows = remainingProducts.slice(0, 9).map((product) => ({
+            id: `${PRODUCT_SELECTION_ROW_PREFIX}${product.id}`,
+            title: getProductDisplayName(product).slice(0, 24),
+            description: `Cant: ${product.quantity} | ${getProductLocation(product).slice(0, 20)}`,
+          }));
+
+          await client.messages.sendText({
+            phoneNumberId,
+            to: phoneNumber,
+            body: `✅ *Conteo registrado*\n\nProducto: ${currentProduct.product_id[1]}\nCantidad ingresada: ${textMessage}\n\n*Productos restantes: ${remainingProducts.length}*`,
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          await client.messages.sendInteractiveList({
+            phoneNumberId,
+            to: phoneNumber,
+            bodyText: "Selecciona el siguiente producto:",
+            buttonText: "Ver productos",
+            sections: [
+              {
+                title: "Productos restantes",
+                rows: productRows,
+              },
+            ],
+          });
+
+          await setSessionState(phoneNumber, "awaiting_product_selection", {
+            selected_recount_request: selectedRequest,
+            product_options: remainingProducts,
+            counted_products: updatedCountedProducts,
+          });
+
+          return new Response("OK", { status: 200 });
+        }
+
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: `✅ *Conteo registrado*\n\nProducto: ${currentProduct.product_id[1]}\nCantidad ingresada: ${textMessage}\n\n*¡Has terminado de contar todos los productos!*`,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const summaryMessage = "📋 *Resumen del reconteo*\n\n" +
+          updatedCountedProducts.map((p, i) => 
+            `${i + 1}. ${p.product_id[1]}: ${p.quantity}`
+          ).join("\n");
+
+        await client.messages.sendText({
+          phoneNumberId,
+          to: phoneNumber,
+          body: summaryMessage,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        await client.messages.sendInteractiveRaw({
+          phoneNumberId,
+          to: phoneNumber,
+          interactive: getAuditConfirmButtons(),
+        });
+
+        await setSessionState(phoneNumber, "audit_count_confirm", {
+          audit_count: textMessage,
+          selected_recount_request: selectedRequest,
+          counted_products: updatedCountedProducts,
+          current_product: currentProduct,
+        });
+
+        console.log("Audit count confirmation sent (multi-product)");
+        return new Response("OK", { status: 200 });
+      }
+
       await client.messages.sendText({
         phoneNumberId,
         to: phoneNumber,
@@ -540,11 +930,9 @@ export async function POST(req: Request) {
         interactive: getAuditConfirmButtons(),
       });
 
-      // Store the count in session data and update state
       await setSessionState(phoneNumber, "audit_count_confirm", {
         audit_count: textMessage,
-        selected_recount_request:
-          (session.session_data as Record<string, unknown>)?.selected_recount_request || null,
+        selected_recount_request: selectedRequest,
       });
 
       console.log("Audit count confirmation sent");

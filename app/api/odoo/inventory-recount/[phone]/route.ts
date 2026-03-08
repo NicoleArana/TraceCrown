@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getInventoryRecountByPhone } from './get-user-by-phone';
+import { getInventoryRecountByPhone } from './get-recount-by-phone';
 
 export async function GET(
   _request: NextRequest,

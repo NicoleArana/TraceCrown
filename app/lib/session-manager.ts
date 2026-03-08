@@ -11,6 +11,7 @@ export interface WhatsAppSession {
     | "creating_order"
     | "auditing"
     | "awaiting_audit_selection"
+    | "awaiting_product_selection"
     | "awaiting_audit_count"
     | "audit_count_confirm";
   session_data: Record<string, unknown>;

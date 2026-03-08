@@ -1,22 +1,28 @@
 import { connectOdoo } from '@/src/odoo/client';
 
+export interface RecountProduct {
+  id: number;
+  product_id: [number, string];
+  quantity: number;
+  location_id: [number, string];
+  inventory_date?: string;
+  lot_id?: [number, string];
+  package_id?: [number, string];
+}
+
+export interface RecountRequestWithProducts {
+  id: number;
+  name?: string;
+  display_name?: string;
+  state?: string;
+  inventory_date?: string;
+  set_count?: string;
+  products: RecountProduct[];
+}
+
 export interface InventoryRecountResponse {
   success: boolean;
-  hasRecountRequest?: boolean;
-  recountRequest?: {
-    id: number;
-    name?: string;
-    display_name?: string;
-    state?: string;
-    [key: string]: unknown;
-  } | null;
-  recountRequests?: Array<{
-    id: number;
-    name?: string;
-    display_name?: string;
-    state?: string;
-    [key: string]: unknown;
-  }>;
+  recountRequests: RecountRequestWithProducts[];
   user?: {
     id: number;
     name: string;
@@ -48,7 +54,7 @@ export async function getInventoryRecountByPhone(
   });
 
   if (!matched) {
-    return { success: false, error: 'Partner not found' };
+    return { success: false, error: 'Partner not found', recountRequests: [] };
   }
 
   const partner = matched as {
@@ -74,8 +80,6 @@ export async function getInventoryRecountByPhone(
   if (!odooUser) {
     return {
       success: true,
-      hasRecountRequest: false,
-      recountRequest: null,
       recountRequests: [],
       user: null,
     };
@@ -145,30 +149,51 @@ export async function getInventoryRecountByPhone(
     return state !== 'done' && state !== 'cancel' && state !== 'cancelled';
   });
 
-  const activeRecount = openAssignedRequests.find((request) => {
-    const state = typeof request.state === 'string' ? request.state.toLowerCase() : '';
-    return state !== 'done' && state !== 'cancel' && state !== 'cancelled';
-  }) || openAssignedRequests[0];
+  const recountRequestsWithProducts: RecountRequestWithProducts[] = await Promise.all(
+    openAssignedRequests.map(async (request) => {
+      const req = request as Record<string, unknown>;
+      const quantIds = req.quant_ids;
+
+      let products: RecountProduct[] = [];
+
+      if (Array.isArray(quantIds) && quantIds.length > 0) {
+        const quantIdNumbers = quantIds.filter((id): id is number => typeof id === 'number');
+
+        if (quantIdNumbers.length > 0) {
+          const quants = (await odoo.searchRead(
+            'stock.quant',
+            [['id', 'in', quantIdNumbers]],
+            ['id', 'product_id', 'quantity', 'location_id', 'inventory_date', 'lot_id', 'package_id'],
+            { limit: 100 }
+          )) as Array<Record<string, unknown>>;
+
+          products = quants.map((q) => ({
+            id: q.id as number,
+            product_id: q.product_id as [number, string],
+            quantity: q.quantity as number,
+            location_id: q.location_id as [number, string],
+            inventory_date: q.inventory_date as string | undefined,
+            lot_id: q.lot_id as [number, string] | undefined,
+            package_id: q.package_id as [number, string] | undefined,
+          }));
+        }
+      }
+
+      return {
+        id: req.id as number,
+        name: req.name as string | undefined,
+        display_name: req.display_name as string | undefined,
+        state: req.state as string | undefined,
+        inventory_date: req.inventory_date as string | undefined,
+        set_count: req.set_count as string | undefined,
+        products,
+      };
+    })
+  );
 
   return {
     success: true,
-    hasRecountRequest: !!activeRecount,
-    recountRequest: activeRecount
-      ? (activeRecount as {
-          id: number;
-          name?: string;
-          display_name?: string;
-          state?: string;
-          [key: string]: unknown;
-        })
-      : null,
-    recountRequests: openAssignedRequests as Array<{
-      id: number;
-      name?: string;
-      display_name?: string;
-      state?: string;
-      [key: string]: unknown;
-    }>,
+    recountRequests: recountRequestsWithProducts,
     user: odooUser,
   };
 }
