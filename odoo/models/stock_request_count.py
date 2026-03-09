@@ -85,6 +85,43 @@ class StockRequestCount(models.TransientModel):
         except Exception:
             pass
 
+    def _update_stock_move_metadata(
+        self, quants, expected_quantities, counts_by_quant, single_count
+    ):
+        if counts_by_quant and isinstance(counts_by_quant, dict):
+            recorded_map = {int(k): float(v) for k, v in counts_by_quant.items()}
+        elif single_count is not None:
+            recorded_map = {q.id: float(single_count) for q in quants}
+        else:
+            return
+
+        for quant in quants:
+            if quant.id not in recorded_map:
+                continue
+
+            expected = expected_quantities.get(quant.id, 0.0)
+            recorded = recorded_map[quant.id]
+
+            moves = self.env["stock.move"].search(
+                [
+                    ("product_id", "=", quant.product_id.id),
+                    ("location_id", "=", quant.location_id.id),
+                    ("state", "=", "done"),
+                    ("whatsapp_audit_source", "=", False),
+                ],
+                order="id desc",
+                limit=1,
+            )
+
+            if moves:
+                moves[0].write(
+                    {
+                        "whatsapp_audit_source": True,
+                        "inventory_recorded": recorded,
+                        "inventory_expected": expected,
+                    }
+                )
+
     @api.model
     def trace_complete_recount_as_assignee(
         self, request_id, count=None, counts_by_quant=None
@@ -127,6 +164,10 @@ class StockRequestCount(models.TransientModel):
 
         quants = self.env["stock.quant"].browse(quant_ids).with_user(assigned_user)
 
+        expected_quantities = {}
+        for quant in quants:
+            expected_quantities[quant.id] = quant.quantity
+
         if counts_by_quant and isinstance(counts_by_quant, dict):
             quant_map = {int(k): float(v) for k, v in counts_by_quant.items()}
             for quant in quants:
@@ -144,6 +185,13 @@ class StockRequestCount(models.TransientModel):
             quants.action_apply_inventory()
             updated_quant_ids = quant_ids
             counts_applied = [count_float] * len(quant_ids)
+
+        self._update_stock_move_metadata(
+            quants,
+            expected_quantities,
+            counts_by_quant,
+            count_float if counts_by_quant is None else None,
+        )
 
         if "state" in request._fields:
             request.with_user(assigned_user).write({"state": "done"})

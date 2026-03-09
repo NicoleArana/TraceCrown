@@ -1,23 +1,27 @@
-from odoo import models
+from odoo import models, fields
 import requests
 import threading
 
 
-class StockQuant(models.Model):
-    _inherit = "stock.quant"
+class StockMove(models.Model):
+    _inherit = "stock.move"
+
+    whatsapp_audit_source = fields.Boolean(default=False)
+    inventory_recorded = fields.Float()
+    inventory_expected = fields.Float()
 
     def write(self, vals):
-        res = super(StockQuant, self).write(vals)
-        if "quantity" in vals:
+        res = super(StockMove, self).write(vals)
+        if "state" in vals and vals["state"] == "done":
             for record in self:
-                payload = {
-                    "event": "inventory.updated_by_user",
-                    "product": record.product_id.name,
-                    "new_quantity": record.quantity,
-                    "location": record.location_id.display_name,
-                }
-                threading.Thread(target=self._send_webhook, args=(payload,)).start()
-        
+                if record.location_id.usage == "internal":
+                    payload = {
+                        "event": "inventory.updated_by_user",
+                        "product": record.product_id.name,
+                        "new_quantity": record.quantity,
+                        "location": record.location_id.display_name,
+                    }
+                    threading.Thread(target=self._send_webhook, args=(payload,)).start()
         return res
 
     def _send_webhook(self, payload):
