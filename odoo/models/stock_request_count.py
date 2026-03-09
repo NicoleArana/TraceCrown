@@ -49,7 +49,9 @@ class StockRequestCount(models.TransientModel):
         for record, vals in zip(records, vals_list):
             if vals.get(assignment_field) and record[assignment_field]:
                 payload = record._build_assignment_payload(record, assignment_field)
-                threading.Thread(target=record._send_webhook, args=(payload,), daemon=True).start()
+                threading.Thread(
+                    target=record._send_webhook, args=(payload,), daemon=True
+                ).start()
 
         return records
 
@@ -59,7 +61,9 @@ class StockRequestCount(models.TransientModel):
 
         if assignment_field and assignment_field in vals:
             for record in self:
-                previous_assigned[record.id] = record[assignment_field].id if record[assignment_field] else None
+                previous_assigned[record.id] = (
+                    record[assignment_field].id if record[assignment_field] else None
+                )
 
         res = super().write(vals)
 
@@ -69,7 +73,9 @@ class StockRequestCount(models.TransientModel):
                 previous_user_id = previous_assigned.get(record.id)
                 if current_user and current_user.id != previous_user_id:
                     payload = record._build_assignment_payload(record, assignment_field)
-                    threading.Thread(target=record._send_webhook, args=(payload,), daemon=True).start()
+                    threading.Thread(
+                        target=record._send_webhook, args=(payload,), daemon=True
+                    ).start()
 
         return res
 
@@ -80,21 +86,30 @@ class StockRequestCount(models.TransientModel):
             pass
 
     @api.model
-    def trace_complete_recount_as_assignee(self, request_id, count=None):
-        if count is None and isinstance(request_id, (list, tuple)) and len(request_id) >= 2:
+    def trace_complete_recount_as_assignee(
+        self, request_id, count=None, counts_by_quant=None
+    ):
+        if counts_by_quant is None and isinstance(count, dict):
+            counts_by_quant = count
+            count = None
+
+        if (
+            counts_by_quant is None
+            and isinstance(request_id, (list, tuple))
+            and len(request_id) >= 2
+        ):
             request_id, count = request_id[0], request_id[1]
 
         if isinstance(request_id, (list, tuple)):
             raise ValueError("request_id must be a scalar value")
 
-        if count is None:
-            raise ValueError("Count is required")
+        if count is None and counts_by_quant is None:
+            raise ValueError("Count or counts_by_quant is required")
 
         try:
             request_id_int = int(request_id)
-            count_float = float(count)
         except (TypeError, ValueError) as exc:
-            raise ValueError("request_id and count must be numeric") from exc
+            raise ValueError("request_id must be numeric") from exc
 
         request = self.browse(request_id_int).exists()
         if not request:
@@ -106,11 +121,29 @@ class StockRequestCount(models.TransientModel):
 
         quant_ids = request.quant_ids.ids if "quant_ids" in request._fields else []
         if not quant_ids:
-            raise ValueError(f"Recount request {request_id_int} has no quant_ids to update")
+            raise ValueError(
+                f"Recount request {request_id_int} has no quant_ids to update"
+            )
 
         quants = self.env["stock.quant"].browse(quant_ids).with_user(assigned_user)
-        quants.write({"inventory_quantity": count_float})
-        quants.action_apply_inventory()
+
+        if counts_by_quant and isinstance(counts_by_quant, dict):
+            quant_map = {int(k): float(v) for k, v in counts_by_quant.items()}
+            for quant in quants:
+                if quant.id in quant_map:
+                    quant.inventory_quantity = quant_map[quant.id]
+                    quant.action_apply_inventory()
+            updated_quant_ids = [q.id for q in quants if q.id in quant_map]
+            counts_applied = list(quant_map.values())
+        else:
+            try:
+                count_float = float(count)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("count must be numeric") from exc
+            quants.write({"inventory_quantity": count_float})
+            quants.action_apply_inventory()
+            updated_quant_ids = quant_ids
+            counts_applied = [count_float] * len(quant_ids)
 
         if "state" in request._fields:
             request.with_user(assigned_user).write({"state": "done"})
@@ -130,8 +163,8 @@ class StockRequestCount(models.TransientModel):
             "success": True,
             "request_id": request.id,
             "request_name": request.display_name,
-            "count": count_float,
-            "updated_quant_ids": quant_ids,
+            "counts": counts_applied,
+            "updated_quant_ids": updated_quant_ids,
             "impersonated_user_id": assigned_user.id,
             "impersonated_user_name": assigned_user.name,
             "request_removed": request_removed,
