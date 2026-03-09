@@ -10,6 +10,7 @@
     "data": [
         "security/ir.model.access.csv",
         "views/whatsapp_session_views.xml",
+        "views/stock_move_whatsapp_audit_views.xml",
     ],
     "application": True,
     "auto_install": False,
