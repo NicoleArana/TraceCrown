@@ -92,7 +92,7 @@ function buildAuditDetailsMessage(request: RecountRequestOption): string {
   message += `📦 *Productos:* ${products.length}\n\n`;
   
   products.slice(0, 3).forEach((p, i) => {
-    message += `${i + 1}. ${p.product_id[1]} (${p.quantity})\n`;
+    message += `${i + 1}. ${p.product_id[1]}\n`;
   });
   
   if (products.length > 3) {
@@ -285,12 +285,6 @@ export async function POST(req: Request) {
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         if (products.length > 1) {
-          await client.messages.sendText({
-            phoneNumberId,
-            to: phoneNumber,
-            body: `Esta solicitud tiene ${products.length} productos. Por favor ingresa el conteo de cada uno.\n\n*Comenzando con el primer producto:*`,
-          });
-
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
 
@@ -438,12 +432,6 @@ export async function POST(req: Request) {
           await new Promise((resolve) => setTimeout(resolve, 500));
 
           if (products.length > 1) {
-            await client.messages.sendText({
-              phoneNumberId,
-              to: phoneNumber,
-              body: `Esta solicitud tiene ${products.length} productos. Por favor ingresa el conteo de cada uno.\n\n*Comenzando con el primer producto:*`,
-            });
-
             await new Promise((resolve) => setTimeout(resolve, 500));
 
             const firstProduct = products[0];
@@ -720,12 +708,6 @@ export async function POST(req: Request) {
             locationId: nextProduct.location_id[0],
           };
 
-          await client.messages.sendText({
-            phoneNumberId,
-            to: phoneNumber,
-            body: `✅ *Conteo registrado*\n\n"${currentProductData.name}": ${textMessage}\n\n*Producto ${nextProductIndex + 1} de ${allProducts.length}*`,
-          });
-
           await new Promise((resolve) => setTimeout(resolve, 500));
 
           await client.messages.sendText({
@@ -743,12 +725,6 @@ export async function POST(req: Request) {
 
           return new Response("OK", { status: 200 });
         }
-
-        await client.messages.sendText({
-          phoneNumberId,
-          to: phoneNumber,
-          body: `✅ *Conteo registrado*\n\n"${currentProductData.name}": ${textMessage}\n\n*¡Has terminado de contar todos los productos!*`,
-        });
 
         await new Promise((resolve) => setTimeout(resolve, 500));
 
