@@ -23,6 +23,7 @@ import { completeInventoryRecount } from "../odoo/inventory-recount/complete-rec
 type RecountRequestOption = RecountRequestWithProducts;
 
 type CountedProduct = {
+  quant_id: number;
   product_id: [number, string];
   quantity: number;
   location_id: [number, string];
@@ -123,7 +124,10 @@ function getCountedProducts(sessionData: Record<string, unknown>): CountedProduc
 
   return raw.filter(
     (item): item is CountedProduct =>
-      typeof item === "object" && item !== null && Array.isArray(item.product_id)
+      typeof item === "object" &&
+      item !== null &&
+      typeof (item as { quant_id?: unknown }).quant_id === "number" &&
+      Array.isArray((item as { product_id?: unknown }).product_id)
   );
 }
 
@@ -541,7 +545,7 @@ export async function POST(req: Request) {
           if (countedProducts.length > 0) {
             const countsByQuant: Record<number, number> = {};
             for (const countedProduct of countedProducts) {
-              const quantId = countedProduct.location_id[0];
+              const quantId = countedProduct.quant_id;
               countsByQuant[quantId] = countedProduct.quantity;
             }
 
@@ -695,6 +699,7 @@ export async function POST(req: Request) {
 
       if (currentProductData && selectedRequest) {
         const newCountedProduct: CountedProduct = {
+          quant_id: currentProductData.id,
           product_id: [0, currentProductData.name],
           quantity: Number(textMessage),
           location_id: [currentProductData.locationId, currentProductData.location],
