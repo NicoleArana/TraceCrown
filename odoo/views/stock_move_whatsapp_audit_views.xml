@@ -3,13 +3,29 @@
     <record id="view_stock_move_whatsapp_audit_pivot" model="ir.ui.view">
         <field name="name">stock.move.whatsapp.audit.pivot</field>
         <field name="model">stock.move</field>
-        <field name="inherit_id" ref="stock.view_stock_move_pivot"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='state']" position="after">
+            <pivot string="WhatsApp Audit Moves" sample="1">
                 <field name="whatsapp_audit_source" type="row"/>
+                <field name="product_id" type="row"/>
                 <field name="inventory_recorded" type="measure"/>
                 <field name="inventory_expected" type="measure"/>
-            </xpath>
+            </pivot>
         </field>
     </record>
+
+    <record id="action_stock_move_whatsapp_audit" model="ir.actions.act_window">
+        <field name="name">WhatsApp Audit Moves</field>
+        <field name="res_model">stock.move</field>
+        <field name="view_mode">pivot,tree,form</field>
+        <field name="view_id" ref="view_stock_move_whatsapp_audit_pivot"/>
+        <field name="domain">[('whatsapp_audit_source', '=', True)]</field>
+    </record>
+
+    <menuitem
+        id="menu_stock_move_whatsapp_audit"
+        name="WhatsApp Audit Moves"
+        parent="stock.menu_stock_root"
+        action="action_stock_move_whatsapp_audit"
+        sequence="96"
+    />
 </odoo>
